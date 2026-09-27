@@ -4,7 +4,7 @@ export const site = {
   brandLine2: "DECOR & WEDDING PLANNER",
   message: import.meta.env.VITE_BRAND_MESSAGE || "Your Vision. Our Creation.",
   apiBaseUrl: import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api",
-  whatsappNumber: import.meta.env.VITE_WHATSAPP_NUMBER || "",
+  whatsappNumber: import.meta.env.VITE_WHATSAPP_NUMBER || "919095794840",
   instagramUrl: import.meta.env.VITE_INSTAGRAM_URL || "",
 } as const;
 

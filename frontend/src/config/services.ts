@@ -86,9 +86,7 @@ export const serviceCategories: ServiceCategory[] = [
     services: [
       { name: "Catering Services" },
       { name: "Food Stalls" },
-      { name: "Live Food Counters" },
       { name: "Beverage Counters" },
-      { name: "Buffet Setup" },
       { name: "Dessert Counters" },
       { name: "Customized Food Arrangements" },
     ],
