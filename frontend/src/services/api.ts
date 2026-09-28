@@ -72,51 +72,7 @@ const ENTRIES_IMAGES = ["/entries1.jpg", "/event1.jpg"];
 const PHOTOGRAPHY_IMAGES = ["/photography1.jpg", "/event2.jpg"];
 
 function getMockGalleryItems(categorySlug?: string, subcategorySlug?: string): GalleryItem[] {
-  const items: GalleryItem[] = [];
-
-  serviceCategories.forEach((cat, catIdx) => {
-    cat.gallerySubcategories.forEach((sub, subIdx) => {
-      // Create 1 clean default item per subcategory
-      const itemId = (catIdx + 1) * 100 + subIdx + 1;
-
-      let imageUrl = "/demo.jpg";
-      let title = sub.name;
-
-      if (cat.slug === "decorations") {
-        imageUrl = DECORATION_IMAGES[subIdx % DECORATION_IMAGES.length];
-      } else if (cat.slug === "event-production") {
-        imageUrl = EVENT_IMAGES[subIdx % EVENT_IMAGES.length];
-      } else if (cat.slug === "food-hospitality") {
-        imageUrl = "/catering1.jpg";
-      } else if (cat.slug === "entertainment") {
-        imageUrl = "/entertainment1.jpg";
-      } else if (cat.slug === "gifts") {
-        imageUrl = "/gift1.jpg";
-      } else if (cat.slug === "music-and-entries") {
-        imageUrl = "/entries1.jpg";
-      } else if (cat.slug === "photography") {
-        imageUrl = "/photography1.jpg";
-      }
-
-      items.push({
-        id: itemId,
-        categorySlug: cat.slug,
-        subcategorySlug: sub.slug,
-        subcategoryName: sub.name,
-        title,
-        description: `Curated ${sub.name} setup by Azhagu Decor.`,
-        imageUrl,
-        published: true,
-        createdAt: new Date().toISOString(),
-      });
-    });
-  });
-
-  return items.filter((item) => {
-    if (categorySlug && item.categorySlug !== categorySlug) return false;
-    if (subcategorySlug && item.subcategorySlug !== subcategorySlug) return false;
-    return true;
-  });
+  return [];
 }
 
 import { supabase } from "./supabaseClient";
