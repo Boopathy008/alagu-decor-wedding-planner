@@ -497,14 +497,14 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
   try {
     let query = supabase
       .from("gallery_items")
-      .select("*, gallery_categories!inner(slug, name), gallery_subcategories!inner(slug, name)")
+      .select("*, gallery_categories(slug, name), gallery_subcategories(slug, name)")
       .order("created_at", { ascending: false });
 
     if (categorySlug) {
       query = query.eq("gallery_categories.slug", categorySlug);
     }
     const { data, error } = await query;
-    if (!error && data !== null && data.length > 0) {
+    if (!error && data !== null) {
       return data.map((item: any) => ({
         id: item.id,
         categorySlug: item.gallery_categories?.slug || "decorations",
@@ -526,7 +526,7 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
       query = query.eq("category_slug", categorySlug);
     }
     const { data, error } = await query;
-    if (!error && data !== null && data.length > 0) {
+    if (!error && data !== null) {
       return data.map((item: any) => ({
         id: item.id,
         categorySlug: item.category_slug || categorySlug || "decorations",
@@ -548,6 +548,7 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
     (item) => (!categorySlug || item.categorySlug === categorySlug) && !deletedIds.includes(item.id)
   );
 }
+
 
 
 
