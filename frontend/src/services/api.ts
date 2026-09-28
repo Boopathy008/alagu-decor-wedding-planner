@@ -8,7 +8,9 @@ import type {
   GalleryItem,
 } from "@/types";
 
-export const api = axios.create({ baseURL: site.apiBaseUrl });
+// 2 s timeout – if the backend is sleeping on a free tier it falls back
+// to local mock data almost instantly instead of hanging for ~30 s.
+export const api = axios.create({ baseURL: site.apiBaseUrl, timeout: 2000 });
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("azhagu_admin_token");
@@ -121,7 +123,7 @@ function getMockGalleryItems(categorySlug?: string, subcategorySlug?: string): G
 
 export async function fetchGalleryByCategory(categorySlug: string) {
   try {
-    const res = await api.get<ApiResponse<GalleryItem[]>>(`/gallery/${categorySlug}`);
+    const res = await api.get<ApiResponse<GalleryItem[]>>(`/gallery/${categorySlug}`, { timeout: 2000 });
     if (res.data.data && res.data.data.length > 0) return res.data.data;
   } catch (e) {
     // fallback to mock
@@ -148,7 +150,7 @@ export async function fetchGalleryByCategoryAndSubcategory(
 
 export async function fetchFeaturedGallery() {
   try {
-    const res = await api.get<ApiResponse<GalleryItem[]>>(`/gallery/featured`);
+    const res = await api.get<ApiResponse<GalleryItem[]>>(`/gallery/featured`, { timeout: 2000 });
     if (res.data.data && res.data.data.length > 0) return res.data.data;
   } catch (e) {
     // fallback to mock
@@ -367,10 +369,11 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
   try {
     const res = await api.get<ApiResponse<GalleryItem[]>>("/admin/gallery", {
       params: categorySlug ? { category: categorySlug } : undefined,
+      timeout: 2000,
     });
     if (res.data.data && res.data.data.length > 0) return res.data.data;
   } catch (e) {
-    // Demo fallback
+    // Demo fallback – backend sleeping or unavailable
   }
 
   const baseItems = getMockGalleryItems(categorySlug);
