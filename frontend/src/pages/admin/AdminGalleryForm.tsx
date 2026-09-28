@@ -57,20 +57,20 @@ export default function AdminGalleryForm() {
     e.preventDefault();
     setError(null);
 
-    if (!title.trim()) return setError("Title is required.");
     if (!isEditing && !file) return setError("Please select an image to upload.");
+
+    const finalTitle = title.trim() || file?.name || "Gallery Image";
 
     const formData = new FormData();
     formData.append("categorySlug", categorySlug);
     formData.append("subcategorySlug", subcategorySlug);
-    formData.append("title", title);
+    formData.append("title", finalTitle);
     formData.append("description", description);
     formData.append("published", String(published));
     if (file) formData.append("image", file);
 
     setSaving(true);
     setSavingLong(false);
-    // After 3 s show a "waking up" hint (Render free tier takes ~30 s)
     const wakeTimer = setTimeout(() => setSavingLong(true), 3000);
     try {
       if (isEditing && id) {
@@ -79,8 +79,8 @@ export default function AdminGalleryForm() {
         await adminCreateGalleryItem(formData);
       }
       navigate(`/admin/gallery/${categorySlug}`);
-    } catch {
-      setError("Upload failed. Check file size/type and try again.");
+    } catch (err: any) {
+      setError(err?.message || "Upload failed. Check file size/type and try again.");
     } finally {
       clearTimeout(wakeTimer);
       setSaving(false);

@@ -88,7 +88,7 @@ export async function fetchGalleryByCategory(categorySlug: string) {
       .eq("published", true)
       .order("created_at", { ascending: false });
 
-    if (!error && data !== null && data.length > 0) {
+    if (!error && data) {
       return data.map((item: any) => ({
         id: item.id,
         categorySlug: item.gallery_categories?.slug || categorySlug,
@@ -101,34 +101,10 @@ export async function fetchGalleryByCategory(categorySlug: string) {
         createdAt: item.created_at,
       }));
     }
-  } catch (e) {}
-
-  // Fallback check for raw columns
-  try {
-    const { data, error } = await supabase
-      .from("gallery_items")
-      .select("*")
-      .eq("category_slug", categorySlug)
-      .eq("published", true)
-      .order("created_at", { ascending: false });
-
-    if (!error && data !== null && data.length > 0) {
-      return data.map((item: any) => ({
-        id: item.id,
-        categorySlug: item.category_slug || categorySlug,
-        subcategorySlug: item.subcategory_slug || "",
-        subcategoryName: item.subcategory_name || item.subcategory_slug || "",
-        title: item.title,
-        description: item.description,
-        imageUrl: item.image_url,
-        published: item.published,
-        createdAt: item.created_at,
-      }));
-    }
-  } catch (e) {}
-
-  const items = await adminFetchAllGalleryItems(categorySlug);
-  return items.filter((i) => i.published);
+  } catch (e) {
+    console.error("fetchGalleryByCategory error:", e);
+  }
+  return [];
 }
 
 export async function fetchGalleryByCategoryAndSubcategory(
@@ -144,7 +120,7 @@ export async function fetchGalleryByCategoryAndSubcategory(
       .eq("published", true)
       .order("created_at", { ascending: false });
 
-    if (!error && data !== null && data.length > 0) {
+    if (!error && data) {
       return data.map((item: any) => ({
         id: item.id,
         categorySlug: item.gallery_categories?.slug || categorySlug,
@@ -157,10 +133,10 @@ export async function fetchGalleryByCategoryAndSubcategory(
         createdAt: item.created_at,
       }));
     }
-  } catch (e) {}
-
-  const items = await adminFetchAllGalleryItems(categorySlug);
-  return items.filter((i) => i.subcategorySlug === subcategorySlug && i.published);
+  } catch (e) {
+    console.error("fetchGalleryByCategoryAndSubcategory error:", e);
+  }
+  return [];
 }
 
 export async function fetchFeaturedGallery() {
@@ -172,8 +148,6 @@ export async function fetchFeaturedGallery() {
   });
   return featured;
 }
-
-
 
 const ENQUIRIES_STORAGE_KEY = "azhagu_demo_enquiries";
 
@@ -251,21 +225,10 @@ export async function adminLogin(email: string, password: string) {
 
 // ---------- Admin gallery management ----------
 
-const CUSTOM_GALLERY_STORAGE_KEY = "azhagu_demo_custom_gallery";
-
-function getLocalCustomGallery(): GalleryItem[] {
-  try {
-    const raw = localStorage.getItem(CUSTOM_GALLERY_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
 export async function adminCreateGalleryItem(formData: FormData): Promise<GalleryItem> {
   const categorySlug = (formData.get("categorySlug") as string) || "decorations";
   const subcategorySlug = (formData.get("subcategorySlug") as string) || "";
-  const title = (formData.get("title") as string) || "New Image";
+  const title = (formData.get("title") as string) || "Gallery Image";
   const description = (formData.get("description") as string) || "";
   const published = formData.get("published") === "true";
   const file = formData.get("image") as File | null;
@@ -279,237 +242,189 @@ export async function adminCreateGalleryItem(formData: FormData): Promise<Galler
     });
   }
 
-  // 1. Try relational Supabase insertion
-  try {
-    const catQuery = await supabase.from("gallery_categories").select("id").eq("slug", categorySlug).single();
-    const subQuery = await supabase.from("gallery_subcategories").select("id").eq("slug", subcategorySlug).single();
+  // 1. Query category_id from Supabase
+  const catQuery = await supabase
+    .from("gallery_categories")
+    .select("id")
+    .eq("slug", categorySlug)
+    .single();
 
-    if (catQuery.data && subQuery.data) {
-      const { data, error } = await supabase
-        .from("gallery_items")
-        .insert([
-          {
-            category_id: catQuery.data.id,
-            subcategory_id: subQuery.data.id,
-            title,
-            description,
-            image_url: imageUrl,
-            cloudinary_public_id: "local_base64_" + Date.now(),
-            published,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-        ])
-        .select()
-        .single();
+  if (catQuery.error || !catQuery.data) {
+    console.error("Category lookup error:", catQuery.error);
+    throw new Error(`Category ${categorySlug} not found in database.`);
+  }
 
-      if (!error && data) {
-        const item: GalleryItem = {
-          id: data.id,
-          categorySlug,
-          subcategorySlug,
-          subcategoryName: subcategorySlug,
-          title: data.title,
-          description: data.description,
-          imageUrl: data.image_url,
-          published: data.published,
-          createdAt: data.created_at,
-        };
-        const current = getLocalCustomGallery();
-        localStorage.setItem(CUSTOM_GALLERY_STORAGE_KEY, JSON.stringify([item, ...current]));
-        return item;
-      }
-    }
-  } catch (e) {}
+  const categoryId = catQuery.data.id;
 
-  // 2. Try raw column Supabase insertion fallback
-  try {
-    const { data, error } = await supabase
-      .from("gallery_items")
-      .insert([
-        {
-          category_slug: categorySlug,
-          subcategory_slug: subcategorySlug,
-          subcategory_name: subcategorySlug,
-          title,
-          description,
-          image_url: imageUrl,
-          published,
-          created_at: new Date().toISOString(),
-        },
-      ])
-      .select()
+  // 2. Query subcategory_id scoped to categoryId
+  let subcategoryId: number | null = null;
+  if (subcategorySlug) {
+    const subQuery = await supabase
+      .from("gallery_subcategories")
+      .select("id")
+      .eq("category_id", categoryId)
+      .eq("slug", subcategorySlug)
       .single();
 
-    if (!error && data) {
-      const item: GalleryItem = {
-        id: data.id,
-        categorySlug: data.category_slug || categorySlug,
-        subcategorySlug: data.subcategory_slug || subcategorySlug,
-        subcategoryName: data.subcategory_name || subcategorySlug,
-        title: data.title,
-        description: data.description,
-        imageUrl: data.image_url,
-        published: data.published,
-        createdAt: data.created_at,
-      };
-      const current = getLocalCustomGallery();
-      localStorage.setItem(CUSTOM_GALLERY_STORAGE_KEY, JSON.stringify([item, ...current]));
-      return item;
+    if (subQuery.data) {
+      subcategoryId = subQuery.data.id;
     }
-  } catch (e) {}
+  }
 
-  // 3. Backend API or local storage fallback
-  const newItem: GalleryItem = {
-    id: Date.now(),
-    categorySlug,
-    subcategorySlug,
-    subcategoryName: subcategorySlug,
-    title,
-    description,
-    imageUrl,
-    published,
-    createdAt: new Date().toISOString(),
+  // Fallback to first available subcategory if subcategory not provided or not matched
+  if (!subcategoryId) {
+    const defaultSub = await supabase
+      .from("gallery_subcategories")
+      .select("id")
+      .eq("category_id", categoryId)
+      .limit(1)
+      .single();
+
+    if (defaultSub.data) {
+      subcategoryId = defaultSub.data.id;
+    }
+  }
+
+  if (!subcategoryId) {
+    throw new Error(`Subcategory not found for category ${categorySlug}`);
+  }
+
+  // 3. Insert into Supabase gallery_items
+  const { data, error } = await supabase
+    .from("gallery_items")
+    .insert([
+      {
+        category_id: categoryId,
+        subcategory_id: subcategoryId,
+        title,
+        description,
+        image_url: imageUrl,
+        cloudinary_public_id: "base64_" + Date.now(),
+        published,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    ])
+    .select("*, gallery_categories(slug), gallery_subcategories(slug, name)")
+    .single();
+
+  if (error || !data) {
+    console.error("Supabase gallery_items insert error:", error);
+    throw new Error(`Failed to save gallery item: ${error?.message || "Unknown error"}`);
+  }
+
+  return {
+    id: data.id,
+    categorySlug: data.gallery_categories?.slug || categorySlug,
+    subcategorySlug: data.gallery_subcategories?.slug || subcategorySlug,
+    subcategoryName: data.gallery_subcategories?.name || subcategorySlug,
+    title: data.title,
+    description: data.description,
+    imageUrl: data.image_url,
+    published: data.published,
+    createdAt: data.created_at,
   };
-
-  const current = getLocalCustomGallery();
-  localStorage.setItem(CUSTOM_GALLERY_STORAGE_KEY, JSON.stringify([newItem, ...current]));
-  return newItem;
 }
 
 export async function adminUpdateGalleryItem(id: number, formData: FormData): Promise<GalleryItem> {
-  const current = getLocalCustomGallery();
-  const allCurrentItems = [...current, ...getMockGalleryItems()];
-  const existing = allCurrentItems.find((item) => item.id === id);
-
-  const categorySlug = (formData.get("categorySlug") as string) || existing?.categorySlug || "decorations";
-  const subcategorySlug = (formData.get("subcategorySlug") as string) || existing?.subcategorySlug || "";
-  const title = (formData.get("title") as string) || existing?.title || "";
-  const description = (formData.get("description") as string) || existing?.description || "";
+  const categorySlug = (formData.get("categorySlug") as string) || "";
+  const subcategorySlug = (formData.get("subcategorySlug") as string) || "";
+  const title = (formData.get("title") as string) || "";
+  const description = (formData.get("description") as string) || "";
   const published = formData.get("published") === "true";
   const file = formData.get("image") as File | null;
 
-  let imageUrl = existing?.imageUrl || "/demo.jpg";
+  const updateData: any = {
+    title,
+    description,
+    published,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (categorySlug) {
+    const catQuery = await supabase
+      .from("gallery_categories")
+      .select("id")
+      .eq("slug", categorySlug)
+      .single();
+
+    if (catQuery.data) {
+      updateData.category_id = catQuery.data.id;
+      if (subcategorySlug) {
+        const subQuery = await supabase
+          .from("gallery_subcategories")
+          .select("id")
+          .eq("category_id", catQuery.data.id)
+          .eq("slug", subcategorySlug)
+          .single();
+
+        if (subQuery.data) {
+          updateData.subcategory_id = subQuery.data.id;
+        }
+      }
+    }
+  }
+
   if (file) {
-    imageUrl = await new Promise<string>((resolve) => {
+    const imageUrl = await new Promise<string>((resolve) => {
       const reader = new FileReader();
       reader.onloadend = () => resolve(reader.result as string);
       reader.readAsDataURL(file);
     });
+    updateData.image_url = imageUrl;
   }
 
-  // 1. Try Supabase update
-  try {
-    const { data, error } = await supabase
-      .from("gallery_items")
-      .update({
-        title,
-        description,
-        image_url: imageUrl,
-        published,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id)
-      .select()
-      .single();
+  const { data, error } = await supabase
+    .from("gallery_items")
+    .update(updateData)
+    .eq("id", id)
+    .select("*, gallery_categories(slug), gallery_subcategories(slug, name)")
+    .single();
 
-    if (!error && data) {
-      const updatedItem: GalleryItem = {
-        id: data.id,
-        categorySlug,
-        subcategorySlug,
-        subcategoryName: subcategorySlug,
-        title: data.title,
-        description: data.description,
-        imageUrl: data.image_url,
-        published: data.published,
-        createdAt: data.created_at,
-      };
-      const isExistingCustom = current.some((item) => item.id === id);
-      const updatedList = isExistingCustom
-        ? current.map((item) => (item.id === id ? updatedItem : item))
-        : [updatedItem, ...current];
-      localStorage.setItem(CUSTOM_GALLERY_STORAGE_KEY, JSON.stringify(updatedList));
-      return updatedItem;
-    }
-  } catch (e) {}
+  if (error || !data) {
+    console.error("Supabase gallery_items update error:", error);
+    throw new Error(`Failed to update gallery item: ${error?.message || "Unknown error"}`);
+  }
 
-  // 2. Fallback
-  const updatedItem: GalleryItem = {
-    id,
-    categorySlug,
-    subcategorySlug,
-    subcategoryName: subcategorySlug,
-    title,
-    description,
-    imageUrl,
-    published,
-    createdAt: existing?.createdAt || new Date().toISOString(),
+  return {
+    id: data.id,
+    categorySlug: data.gallery_categories?.slug || categorySlug,
+    subcategorySlug: data.gallery_subcategories?.slug || subcategorySlug,
+    subcategoryName: data.gallery_subcategories?.name || subcategorySlug,
+    title: data.title,
+    description: data.description,
+    imageUrl: data.image_url,
+    published: data.published,
+    createdAt: data.created_at,
   };
-
-  const isExistingCustom = current.some((item) => item.id === id);
-  const updatedList = isExistingCustom
-    ? current.map((item) => (item.id === id ? updatedItem : item))
-    : [updatedItem, ...current];
-
-  localStorage.setItem(CUSTOM_GALLERY_STORAGE_KEY, JSON.stringify(updatedList));
-  return updatedItem;
-}
-
-const DELETED_GALLERY_STORAGE_KEY = "azhagu_demo_deleted_gallery";
-
-function getDeletedGalleryIds(): number[] {
-  try {
-    const raw = localStorage.getItem(DELETED_GALLERY_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
 }
 
 export async function adminDeleteGalleryItem(id: number) {
-  try {
-    const { error } = await supabase.from("gallery_items").delete().eq("id", id);
-    if (!error) {
-      const deletedIds = getDeletedGalleryIds();
-      if (!deletedIds.includes(id)) {
-        localStorage.setItem(DELETED_GALLERY_STORAGE_KEY, JSON.stringify([...deletedIds, id]));
-      }
-      const current = getLocalCustomGallery();
-      const updatedList = current.filter((item) => item.id !== id);
-      localStorage.setItem(CUSTOM_GALLERY_STORAGE_KEY, JSON.stringify(updatedList));
-      return { success: true, data: null };
-    }
-  } catch (e) {}
-
-  const deletedIds = getDeletedGalleryIds();
-  if (!deletedIds.includes(id)) {
-    localStorage.setItem(DELETED_GALLERY_STORAGE_KEY, JSON.stringify([...deletedIds, id]));
+  const { error } = await supabase.from("gallery_items").delete().eq("id", id);
+  if (error) {
+    console.error("Supabase delete error:", error);
+    throw new Error(`Failed to delete gallery item: ${error.message}`);
   }
-  const current = getLocalCustomGallery();
-  const updatedList = current.filter((item) => item.id !== id);
-  localStorage.setItem(CUSTOM_GALLERY_STORAGE_KEY, JSON.stringify(updatedList));
   return { success: true, data: null };
 }
 
 export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<GalleryItem[]> {
-  // 1. Try relational Supabase query
   try {
     let query = supabase
       .from("gallery_items")
-      .select("*, gallery_categories(slug, name), gallery_subcategories(slug, name)")
+      .select("*, gallery_categories!inner(slug), gallery_subcategories!inner(slug, name)")
       .order("created_at", { ascending: false });
 
     if (categorySlug) {
       query = query.eq("gallery_categories.slug", categorySlug);
     }
     const { data, error } = await query;
-    if (!error && data !== null) {
+    if (!error && data) {
       return data.map((item: any) => ({
         id: item.id,
-        categorySlug: item.gallery_categories?.slug || "decorations",
-        subcategorySlug: item.gallery_subcategories?.slug || "wedding",
-        subcategoryName: item.gallery_subcategories?.name || "Wedding",
+        categorySlug: item.gallery_categories?.slug || categorySlug || "decorations",
+        subcategorySlug: item.gallery_subcategories?.slug || "",
+        subcategoryName: item.gallery_subcategories?.name || "",
         title: item.title,
         description: item.description,
         imageUrl: item.image_url,
@@ -517,36 +432,10 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
         createdAt: item.created_at,
       }));
     }
-  } catch (e) {}
-
-  // 2. Try raw column query fallback
-  try {
-    let query = supabase.from("gallery_items").select("*").order("created_at", { ascending: false });
-    if (categorySlug) {
-      query = query.eq("category_slug", categorySlug);
-    }
-    const { data, error } = await query;
-    if (!error && data !== null) {
-      return data.map((item: any) => ({
-        id: item.id,
-        categorySlug: item.category_slug || categorySlug || "decorations",
-        subcategorySlug: item.subcategory_slug || "wedding",
-        subcategoryName: item.subcategory_name || "Wedding",
-        title: item.title,
-        description: item.description,
-        imageUrl: item.image_url,
-        published: item.published,
-        createdAt: item.created_at,
-      }));
-    }
-  } catch (e) {}
-
-  // 3. Fallback to local storage
-  const customItems = getLocalCustomGallery();
-  const deletedIds = getDeletedGalleryIds();
-  return customItems.filter(
-    (item) => (!categorySlug || item.categorySlug === categorySlug) && !deletedIds.includes(item.id)
-  );
+  } catch (e) {
+    console.error("adminFetchAllGalleryItems error:", e);
+  }
+  return [];
 }
 
 
