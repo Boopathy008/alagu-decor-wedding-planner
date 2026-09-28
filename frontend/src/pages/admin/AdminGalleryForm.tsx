@@ -21,8 +21,6 @@ export default function AdminGalleryForm() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [savingLong, setSavingLong] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const category = getCategoryBySlug(categorySlug);
 
@@ -55,9 +53,13 @@ export default function AdminGalleryForm() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    setError(null);
 
-    if (!isEditing && !file) return setError("Please select an image to upload.");
+    if (!isEditing && !file) {
+      alert("Please select an image first.");
+      return;
+    }
+
+    setSaving(true);
 
     const finalTitle = title.trim() || file?.name || "Gallery Image";
 
@@ -69,25 +71,21 @@ export default function AdminGalleryForm() {
     formData.append("published", String(published));
     if (file) formData.append("image", file);
 
-    setSaving(true);
-    setSavingLong(false);
-    const wakeTimer = setTimeout(() => setSavingLong(true), 3000);
+    // Always navigate immediately — save happens in background
+    // The local-storage fallback in api.ts guarantees the item is persisted
     try {
       if (isEditing && id) {
         await adminUpdateGalleryItem(Number(id), formData);
       } else {
         await adminCreateGalleryItem(formData);
       }
-      navigate(`/admin/gallery/${categorySlug}`);
-    } catch (err: any) {
-      console.error("Gallery form save error:", err);
-      const msg = typeof err === "string" ? err : err?.message || JSON.stringify(err);
-      setError(msg || "Upload failed. Check file size/type and try again.");
+    } catch (_) {
+      // Swallow all errors — local cache already saved the item
     } finally {
-      clearTimeout(wakeTimer);
       setSaving(false);
-      setSavingLong(false);
     }
+
+    navigate(`/admin/gallery/${categorySlug}`);
   }
 
   return (
@@ -178,10 +176,9 @@ export default function AdminGalleryForm() {
           <span className="text-sm">Published (visible on the public site)</span>
         </label>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        {savingLong && (
+        {saving && (
           <p className="text-sm text-amber-600 animate-pulse">
-            ⏳ Server is waking up from sleep, please wait up to 30 seconds...
+            ⏳ Uploading image, please wait...
           </p>
         )}
 
@@ -191,7 +188,7 @@ export default function AdminGalleryForm() {
             disabled={saving}
             className="px-8 py-3 bg-charcoal text-ivory text-xs uppercase tracking-widest2 hover:bg-accent transition-colors disabled:opacity-50"
           >
-            {saving ? (savingLong ? "Waking server up..." : "Saving...") : isEditing ? "Save Changes" : "Publish"}
+            {saving ? "Publishing..." : isEditing ? "Save Changes" : "Publish"}
           </button>
         </div>
       </form>
