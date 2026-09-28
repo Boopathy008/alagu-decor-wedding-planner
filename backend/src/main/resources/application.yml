@@ -5,14 +5,14 @@ spring:
   application:
     name: alagu-decor-backend
   datasource:
-    url: ${DATABASE_URL}
-    username: ${DATABASE_USERNAME}
-    password: ${DATABASE_PASSWORD}
+    url: ${SPRING_DATASOURCE_URL:${DATABASE_URL:jdbc:postgresql://localhost:5432/alagu_decor}}
+    username: ${SPRING_DATASOURCE_USERNAME:${DATABASE_USERNAME:postgres}}
+    password: ${SPRING_DATASOURCE_PASSWORD:${DATABASE_PASSWORD:postgres}}
     hikari:
       maximum-pool-size: 5
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: update
     properties:
       hibernate:
         format_sql: false
@@ -24,20 +24,20 @@ spring:
 
 app:
   jwt:
-    secret: ${JWT_SECRET}
+    secret: ${JWT_SECRET:azhagu_decor_super_secret_jwt_key_2026_azhagu_decor_super_secret_jwt_key_2026}
     expiration-ms: ${JWT_EXPIRATION_MS:86400000}
   cloudinary:
-    cloud-name: ${CLOUDINARY_CLOUD_NAME}
-    api-key: ${CLOUDINARY_API_KEY}
-    api-secret: ${CLOUDINARY_API_SECRET}
+    cloud-name: ${CLOUDINARY_CLOUD_NAME:demo}
+    api-key: ${CLOUDINARY_API_KEY:demo}
+    api-secret: ${CLOUDINARY_API_SECRET:demo}
   cors:
-    allowed-origin: ${FRONTEND_ORIGIN:http://localhost:5173}
+    allowed-origin: ${FRONTEND_ORIGIN:*}
   business:
-    whatsapp-number: ${WHATSAPP_NUMBER:}
-    instagram-url: ${INSTAGRAM_URL:}
+    whatsapp-number: ${WHATSAPP_NUMBER:919095794840}
+    instagram-url: ${INSTAGRAM_URL:https://www.instagram.com/azhagu_decor_wedding_planer}
   initial-admin:
-    email: ${INITIAL_ADMIN_EMAIL:}
-    password: ${INITIAL_ADMIN_PASSWORD:}
+    email: ${INITIAL_ADMIN_EMAIL:admin@azhagu.com}
+    password: ${INITIAL_ADMIN_PASSWORD:AzhaguDecor#Admin2026}
 
 logging:
   level:
