@@ -245,8 +245,10 @@ function getLocalCustomGallery(): GalleryItem[] {
 
 export async function adminCreateGalleryItem(formData: FormData): Promise<GalleryItem> {
   try {
+    // 35 s timeout – Render free tier needs ~30 s to wake from sleep.
     const res = await api.post<ApiResponse<GalleryItem>>("/admin/gallery", formData, {
       headers: { "Content-Type": "multipart/form-data" },
+      timeout: 35000,
     });
     if (res.data.data) return res.data.data;
   } catch (e) {
@@ -288,8 +290,10 @@ export async function adminCreateGalleryItem(formData: FormData): Promise<Galler
 
 export async function adminUpdateGalleryItem(id: number, formData: FormData): Promise<GalleryItem> {
   try {
+    // 35 s timeout – Render free tier needs ~30 s to wake from sleep.
     const res = await api.put<ApiResponse<GalleryItem>>(`/admin/gallery/${id}`, formData, {
       headers: { "Content-Type": "multipart/form-data" },
+      timeout: 35000,
     });
     if (res.data.data) return res.data.data;
   } catch (e) {
@@ -350,7 +354,8 @@ function getDeletedGalleryIds(): number[] {
 
 export async function adminDeleteGalleryItem(id: number) {
   try {
-    const res = await api.delete<ApiResponse<null>>(`/admin/gallery/${id}`);
+    // 35 s timeout – Render free tier needs ~30 s to wake from sleep.
+    const res = await api.delete<ApiResponse<null>>(`/admin/gallery/${id}`, { timeout: 35000 });
     return res.data;
   } catch (e) {
     // Demo fallback: save deleted ID and remove from custom list

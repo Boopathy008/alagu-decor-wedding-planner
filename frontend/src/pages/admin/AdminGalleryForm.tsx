@@ -21,6 +21,7 @@ export default function AdminGalleryForm() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [savingLong, setSavingLong] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const category = getCategoryBySlug(categorySlug);
@@ -68,6 +69,9 @@ export default function AdminGalleryForm() {
     if (file) formData.append("image", file);
 
     setSaving(true);
+    setSavingLong(false);
+    // After 3 s show a "waking up" hint (Render free tier takes ~30 s)
+    const wakeTimer = setTimeout(() => setSavingLong(true), 3000);
     try {
       if (isEditing && id) {
         await adminUpdateGalleryItem(Number(id), formData);
@@ -78,7 +82,9 @@ export default function AdminGalleryForm() {
     } catch {
       setError("Upload failed. Check file size/type and try again.");
     } finally {
+      clearTimeout(wakeTimer);
       setSaving(false);
+      setSavingLong(false);
     }
   }
 
@@ -171,6 +177,11 @@ export default function AdminGalleryForm() {
         </label>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
+        {savingLong && (
+          <p className="text-sm text-amber-600 animate-pulse">
+            ⏳ Server is waking up from sleep, please wait up to 30 seconds...
+          </p>
+        )}
 
         <div className="flex gap-3">
           <button
@@ -178,7 +189,7 @@ export default function AdminGalleryForm() {
             disabled={saving}
             className="px-8 py-3 bg-charcoal text-ivory text-xs uppercase tracking-widest2 hover:bg-accent transition-colors disabled:opacity-50"
           >
-            {saving ? "Saving..." : isEditing ? "Save Changes" : "Publish"}
+            {saving ? (savingLong ? "Waking server up..." : "Saving...") : isEditing ? "Save Changes" : "Publish"}
           </button>
         </div>
       </form>

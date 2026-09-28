@@ -11,6 +11,7 @@ export default function AdminGalleryCategory() {
   const [loading, setLoading] = useState(true);
   const [confirmId, setConfirmId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deletingLong, setDeletingLong] = useState(false);
 
   useEffect(() => {
     if (!category) return;
@@ -27,12 +28,16 @@ export default function AdminGalleryCategory() {
 
   async function handleDelete(id: number) {
     setDeleting(true);
+    setDeletingLong(false);
+    const wakeTimer = setTimeout(() => setDeletingLong(true), 3000);
     try {
       await adminDeleteGalleryItem(id);
       setItems((prev) => prev.filter((i) => i.id !== id));
       setConfirmId(null);
     } finally {
+      clearTimeout(wakeTimer);
       setDeleting(false);
+      setDeletingLong(false);
     }
   }
 
@@ -124,7 +129,7 @@ export default function AdminGalleryCategory() {
                 disabled={deleting}
                 className="px-6 py-2.5 bg-red-600 text-ivory text-xs uppercase tracking-widest2 disabled:opacity-50"
               >
-                {deleting ? "Deleting..." : "Delete"}
+                {deleting ? (deletingLong ? "Waking server..." : "Deleting...") : "Delete"}
               </button>
             </div>
           </div>
