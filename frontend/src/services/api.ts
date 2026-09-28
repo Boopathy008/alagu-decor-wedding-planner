@@ -119,15 +119,42 @@ function getMockGalleryItems(categorySlug?: string, subcategorySlug?: string): G
   });
 }
 
+import { supabase } from "./supabaseClient";
+
 // ---------- Public gallery ----------
 
 export async function fetchGalleryByCategory(categorySlug: string) {
   try {
+    const { data, error } = await supabase
+      .from("gallery_items")
+      .select("*")
+      .eq("category_slug", categorySlug)
+      .eq("published", true)
+      .order("created_at", { ascending: false });
+
+    if (!error && data && data.length > 0) {
+      return data.map((item: any) => ({
+        id: item.id,
+        categorySlug: item.category_slug,
+        subcategorySlug: item.subcategory_slug,
+        subcategoryName: item.subcategory_name || item.subcategory_slug,
+        title: item.title,
+        description: item.description,
+        imageUrl: item.image_url,
+        published: item.published,
+        createdAt: item.created_at,
+      }));
+    }
+  } catch (e) {
+    // Supabase query failed, fallback
+  }
+
+  // Fallback to local or backend API
+  try {
     const res = await api.get<ApiResponse<GalleryItem[]>>(`/gallery/${categorySlug}`, { timeout: 2000 });
     if (res.data.data && res.data.data.length > 0) return res.data.data;
-  } catch (e) {
-    // fallback to mock
-  }
+  } catch (e) {}
+
   const items = await adminFetchAllGalleryItems(categorySlug);
   return items.filter((i) => i.published);
 }
@@ -137,25 +164,75 @@ export async function fetchGalleryByCategoryAndSubcategory(
   subcategorySlug: string
 ) {
   try {
+    const { data, error } = await supabase
+      .from("gallery_items")
+      .select("*")
+      .eq("category_slug", categorySlug)
+      .eq("subcategory_slug", subcategorySlug)
+      .eq("published", true)
+      .order("created_at", { ascending: false });
+
+    if (!error && data && data.length > 0) {
+      return data.map((item: any) => ({
+        id: item.id,
+        categorySlug: item.category_slug,
+        subcategorySlug: item.subcategory_slug,
+        subcategoryName: item.subcategory_name || item.subcategory_slug,
+        title: item.title,
+        description: item.description,
+        imageUrl: item.image_url,
+        published: item.published,
+        createdAt: item.created_at,
+      }));
+    }
+  } catch (e) {}
+
+  try {
     const res = await api.get<ApiResponse<GalleryItem[]>>(
       `/gallery/${categorySlug}/${subcategorySlug}`
     );
     if (res.data.data && res.data.data.length > 0) return res.data.data;
-  } catch (e) {
-    // fallback to mock
-  }
+  } catch (e) {}
+
   const items = await adminFetchAllGalleryItems(categorySlug);
   return items.filter((i) => i.subcategorySlug === subcategorySlug && i.published);
 }
 
 export async function fetchFeaturedGallery() {
   try {
+    const { data, error } = await supabase
+      .from("gallery_items")
+      .select("*")
+      .eq("published", true)
+      .order("created_at", { ascending: false });
+
+    if (!error && data && data.length > 0) {
+      const all: GalleryItem[] = data.map((item: any) => ({
+        id: item.id,
+        categorySlug: item.category_slug,
+        subcategorySlug: item.subcategory_slug,
+        subcategoryName: item.subcategory_name || item.subcategory_slug,
+        title: item.title,
+        description: item.description,
+        imageUrl: item.image_url,
+        published: item.published,
+        createdAt: item.created_at,
+      }));
+
+      const featured: GalleryItem[] = [];
+      serviceCategories.forEach((c) => {
+        const match = all.find((item) => item.categorySlug === c.slug && item.published);
+        if (match) featured.push(match);
+      });
+      if (featured.length > 0) return featured;
+    }
+  } catch (e) {}
+
+  try {
     const res = await api.get<ApiResponse<GalleryItem[]>>(`/gallery/featured`, { timeout: 2000 });
     if (res.data.data && res.data.data.length > 0) return res.data.data;
-  } catch (e) {
-    // fallback to mock
-  }
-  
+  } catch (e) {}
+
   const allItems = await adminFetchAllGalleryItems();
   const featured: GalleryItem[] = [];
 
@@ -182,10 +259,26 @@ function getLocalEnquiries(): EnquiryRecord[] {
 
 export async function submitEnquiry(values: EnquiryFormValues) {
   try {
+    await supabase.from("enquiries").insert([
+      {
+        name: values.name,
+        phone: values.phone,
+        email: values.email || null,
+        event_type: values.eventType || null,
+        event_date: values.eventDate || null,
+        location: values.location || null,
+        guest_count: values.guestCount || null,
+        message: values.message || null,
+        status: "NEW",
+        created_at: new Date().toISOString(),
+      },
+    ]);
+  } catch (e) {}
+
+  try {
     const res = await api.post<ApiResponse<null>>("/enquiries", values);
     return res.data;
   } catch (e) {
-    // Demo fallback: save to localStorage
     const current = getLocalEnquiries();
     const newEnquiry: EnquiryRecord = {
       id: Date.now(),
@@ -204,7 +297,6 @@ export async function adminLogin(email: string, password: string) {
   const cleanEmail = email.trim().toLowerCase();
   const cleanPassword = password.trim();
 
-  // Allow easy demo login options (admin@azhagu.com / AzhaguDecor#Admin2026 OR admin@azhagu.com / admin OR admin / admin)
   const isDefaultCredentials =
     (cleanEmail === "admin@azhagu.com" && (cleanPassword === "AzhaguDecor#Admin2026" || cleanPassword === "admin" || cleanPassword === "admin123")) ||
     (cleanEmail === "admin" && (cleanPassword === "admin" || cleanPassword === "admin123" || cleanPassword === "AzhaguDecor#Admin2026"));
@@ -223,9 +315,7 @@ export async function adminLogin(email: string, password: string) {
       { email, password }
     );
     if (res.data.data) return res.data.data;
-  } catch (e) {
-    // API not reachable
-  }
+  } catch (e) {}
 
   throw new Error("Invalid email or password.");
 }
@@ -244,17 +334,6 @@ function getLocalCustomGallery(): GalleryItem[] {
 }
 
 export async function adminCreateGalleryItem(formData: FormData): Promise<GalleryItem> {
-  try {
-    // 35 s timeout – Render free tier needs ~30 s to wake from sleep.
-    const res = await api.post<ApiResponse<GalleryItem>>("/admin/gallery", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-      timeout: 35000,
-    });
-    if (res.data.data) return res.data.data;
-  } catch (e) {
-    // Demo fallback: save image data URL to localStorage
-  }
-
   const categorySlug = (formData.get("categorySlug") as string) || "decorations";
   const subcategorySlug = (formData.get("subcategorySlug") as string) || "";
   const title = (formData.get("title") as string) || "New Image";
@@ -271,6 +350,54 @@ export async function adminCreateGalleryItem(formData: FormData): Promise<Galler
     });
   }
 
+  // 1. Try direct Supabase insertion
+  try {
+    const { data, error } = await supabase
+      .from("gallery_items")
+      .insert([
+        {
+          category_slug: categorySlug,
+          subcategory_slug: subcategorySlug,
+          subcategory_name: subcategorySlug,
+          title,
+          description,
+          image_url: imageUrl,
+          published,
+          created_at: new Date().toISOString(),
+        },
+      ])
+      .select()
+      .single();
+
+    if (!error && data) {
+      const item: GalleryItem = {
+        id: data.id,
+        categorySlug: data.category_slug,
+        subcategorySlug: data.subcategory_slug,
+        subcategoryName: data.subcategory_name || data.subcategory_slug,
+        title: data.title,
+        description: data.description,
+        imageUrl: data.image_url,
+        published: data.published,
+        createdAt: data.created_at,
+      };
+      // Keep local sync in case user opens offline
+      const current = getLocalCustomGallery();
+      localStorage.setItem(CUSTOM_GALLERY_STORAGE_KEY, JSON.stringify([item, ...current]));
+      return item;
+    }
+  } catch (e) {}
+
+  // 2. Try backend API
+  try {
+    const res = await api.post<ApiResponse<GalleryItem>>("/admin/gallery", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 35000,
+    });
+    if (res.data.data) return res.data.data;
+  } catch (e) {}
+
+  // 3. Demo fallback: save image data URL to localStorage
   const newItem: GalleryItem = {
     id: Date.now(),
     categorySlug,
@@ -289,17 +416,6 @@ export async function adminCreateGalleryItem(formData: FormData): Promise<Galler
 }
 
 export async function adminUpdateGalleryItem(id: number, formData: FormData): Promise<GalleryItem> {
-  try {
-    // 35 s timeout – Render free tier needs ~30 s to wake from sleep.
-    const res = await api.put<ApiResponse<GalleryItem>>(`/admin/gallery/${id}`, formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-      timeout: 35000,
-    });
-    if (res.data.data) return res.data.data;
-  } catch (e) {
-    // Demo fallback
-  }
-
   const current = getLocalCustomGallery();
   const allCurrentItems = [...current, ...getMockGalleryItems()];
   const existing = allCurrentItems.find((item) => item.id === id);
@@ -320,6 +436,54 @@ export async function adminUpdateGalleryItem(id: number, formData: FormData): Pr
     });
   }
 
+  // 1. Try Supabase update
+  try {
+    const { data, error } = await supabase
+      .from("gallery_items")
+      .update({
+        category_slug: categorySlug,
+        subcategory_slug: subcategorySlug,
+        subcategory_name: subcategorySlug,
+        title,
+        description,
+        image_url: imageUrl,
+        published,
+      })
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (!error && data) {
+      const updatedItem: GalleryItem = {
+        id: data.id,
+        categorySlug: data.category_slug,
+        subcategorySlug: data.subcategory_slug,
+        subcategoryName: data.subcategory_name || data.subcategory_slug,
+        title: data.title,
+        description: data.description,
+        imageUrl: data.image_url,
+        published: data.published,
+        createdAt: data.created_at,
+      };
+      const isExistingCustom = current.some((item) => item.id === id);
+      const updatedList = isExistingCustom
+        ? current.map((item) => (item.id === id ? updatedItem : item))
+        : [updatedItem, ...current];
+      localStorage.setItem(CUSTOM_GALLERY_STORAGE_KEY, JSON.stringify(updatedList));
+      return updatedItem;
+    }
+  } catch (e) {}
+
+  // 2. Try Backend API
+  try {
+    const res = await api.put<ApiResponse<GalleryItem>>(`/admin/gallery/${id}`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 35000,
+    });
+    if (res.data.data) return res.data.data;
+  } catch (e) {}
+
+  // 3. Fallback
   const updatedItem: GalleryItem = {
     id,
     categorySlug,
@@ -353,12 +517,26 @@ function getDeletedGalleryIds(): number[] {
 }
 
 export async function adminDeleteGalleryItem(id: number) {
+  // 1. Try Supabase delete
   try {
-    // 35 s timeout – Render free tier needs ~30 s to wake from sleep.
+    const { error } = await supabase.from("gallery_items").delete().eq("id", id);
+    if (!error) {
+      const deletedIds = getDeletedGalleryIds();
+      if (!deletedIds.includes(id)) {
+        localStorage.setItem(DELETED_GALLERY_STORAGE_KEY, JSON.stringify([...deletedIds, id]));
+      }
+      const current = getLocalCustomGallery();
+      const updatedList = current.filter((item) => item.id !== id);
+      localStorage.setItem(CUSTOM_GALLERY_STORAGE_KEY, JSON.stringify(updatedList));
+      return { success: true, data: null };
+    }
+  } catch (e) {}
+
+  // 2. Try Backend API
+  try {
     const res = await api.delete<ApiResponse<null>>(`/admin/gallery/${id}`, { timeout: 35000 });
     return res.data;
   } catch (e) {
-    // Demo fallback: save deleted ID and remove from custom list
     const deletedIds = getDeletedGalleryIds();
     if (!deletedIds.includes(id)) {
       localStorage.setItem(DELETED_GALLERY_STORAGE_KEY, JSON.stringify([...deletedIds, id]));
@@ -371,21 +549,46 @@ export async function adminDeleteGalleryItem(id: number) {
 }
 
 export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<GalleryItem[]> {
+  // 1. Try Supabase fetch
+  try {
+    let query = supabase.from("gallery_items").select("*").order("created_at", { ascending: false });
+    if (categorySlug) {
+      query = query.eq("category_slug", categorySlug);
+    }
+    const { data, error } = await query;
+    if (!error && data && data.length > 0) {
+      const supabaseItems: GalleryItem[] = data.map((item: any) => ({
+        id: item.id,
+        categorySlug: item.category_slug,
+        subcategorySlug: item.subcategory_slug,
+        subcategoryName: item.subcategory_name || item.subcategory_slug,
+        title: item.title,
+        description: item.description,
+        imageUrl: item.image_url,
+        published: item.published,
+        createdAt: item.created_at,
+      }));
+
+      // Filter out deleted ones locally
+      const deletedIds = getDeletedGalleryIds();
+      return supabaseItems.filter((item) => !deletedIds.includes(item.id));
+    }
+  } catch (e) {}
+
+  // 2. Try Backend API
   try {
     const res = await api.get<ApiResponse<GalleryItem[]>>("/admin/gallery", {
       params: categorySlug ? { category: categorySlug } : undefined,
       timeout: 2000,
     });
     if (res.data.data && res.data.data.length > 0) return res.data.data;
-  } catch (e) {
-    // Demo fallback – backend sleeping or unavailable
-  }
+  } catch (e) {}
 
+  // 3. Demo fallback
   const baseItems = getMockGalleryItems(categorySlug);
   const customItems = getLocalCustomGallery();
   const deletedIds = getDeletedGalleryIds();
 
-  // Merge custom updated/edited items with base items by replacing matching item ids
   const mergedMap = new Map<number, GalleryItem>();
   baseItems.forEach((item) => {
     if (!deletedIds.includes(item.id)) {
@@ -400,6 +603,7 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
 
   return Array.from(mergedMap.values());
 }
+
 
 // ---------- Admin enquiries ----------
 
