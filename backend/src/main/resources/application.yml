@@ -6,8 +6,8 @@ spring:
     name: alagu-decor-backend
   datasource:
     driver-class-name: org.postgresql.Driver
-    url: ${SPRING_DATASOURCE_URL:${DATABASE_URL:jdbc:postgresql://db.liszotiorqqcbuwhwbvu.supabase.co:5432/postgres}}
-    username: ${SPRING_DATASOURCE_USERNAME:${DATABASE_USERNAME:postgres}}
+    url: ${SPRING_DATASOURCE_URL:${DATABASE_URL:jdbc:postgresql://aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres?sslmode=require}}
+    username: ${SPRING_DATASOURCE_USERNAME:${DATABASE_USERNAME:postgres.liszotiorqqcbuwhwbvu}}
     password: ${SPRING_DATASOURCE_PASSWORD:${DATABASE_PASSWORD:Azhagu1supa}}
     hikari:
       maximum-pool-size: 5
