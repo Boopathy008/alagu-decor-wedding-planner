@@ -88,7 +88,7 @@ export async function fetchGalleryByCategory(categorySlug: string) {
       .eq("published", true)
       .order("created_at", { ascending: false });
 
-    if (!error && data && data.length > 0) {
+    if (!error && data !== null) {
       return data.map((item: any) => ({
         id: item.id,
         categorySlug: item.category_slug,
@@ -101,18 +101,9 @@ export async function fetchGalleryByCategory(categorySlug: string) {
         createdAt: item.created_at,
       }));
     }
-  } catch (e) {
-    // Supabase query failed, fallback
-  }
-
-  // Fallback to local or backend API
-  try {
-    const res = await api.get<ApiResponse<GalleryItem[]>>(`/gallery/${categorySlug}`, { timeout: 2000 });
-    if (res.data.data && res.data.data.length > 0) return res.data.data;
   } catch (e) {}
 
-  const items = await adminFetchAllGalleryItems(categorySlug);
-  return items.filter((i) => i.published);
+  return [];
 }
 
 export async function fetchGalleryByCategoryAndSubcategory(
@@ -128,7 +119,7 @@ export async function fetchGalleryByCategoryAndSubcategory(
       .eq("published", true)
       .order("created_at", { ascending: false });
 
-    if (!error && data && data.length > 0) {
+    if (!error && data !== null) {
       return data.map((item: any) => ({
         id: item.id,
         categorySlug: item.category_slug,
@@ -143,15 +134,7 @@ export async function fetchGalleryByCategoryAndSubcategory(
     }
   } catch (e) {}
 
-  try {
-    const res = await api.get<ApiResponse<GalleryItem[]>>(
-      `/gallery/${categorySlug}/${subcategorySlug}`
-    );
-    if (res.data.data && res.data.data.length > 0) return res.data.data;
-  } catch (e) {}
-
-  const items = await adminFetchAllGalleryItems(categorySlug);
-  return items.filter((i) => i.subcategorySlug === subcategorySlug && i.published);
+  return [];
 }
 
 export async function fetchFeaturedGallery() {
@@ -162,7 +145,7 @@ export async function fetchFeaturedGallery() {
       .eq("published", true)
       .order("created_at", { ascending: false });
 
-    if (!error && data && data.length > 0) {
+    if (!error && data !== null) {
       const all: GalleryItem[] = data.map((item: any) => ({
         id: item.id,
         categorySlug: item.category_slug,
@@ -180,27 +163,13 @@ export async function fetchFeaturedGallery() {
         const match = all.find((item) => item.categorySlug === c.slug && item.published);
         if (match) featured.push(match);
       });
-      if (featured.length > 0) return featured;
+      return featured;
     }
   } catch (e) {}
 
-  try {
-    const res = await api.get<ApiResponse<GalleryItem[]>>(`/gallery/featured`, { timeout: 2000 });
-    if (res.data.data && res.data.data.length > 0) return res.data.data;
-  } catch (e) {}
-
-  const allItems = await adminFetchAllGalleryItems();
-  const featured: GalleryItem[] = [];
-
-  serviceCategories.forEach((c) => {
-    const match = allItems.find((item) => item.categorySlug === c.slug && item.published);
-    if (match) {
-      featured.push(match);
-    }
-  });
-
-  return featured;
+  return [];
 }
+
 
 const ENQUIRIES_STORAGE_KEY = "azhagu_demo_enquiries";
 
