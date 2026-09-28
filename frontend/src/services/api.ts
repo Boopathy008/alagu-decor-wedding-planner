@@ -11,7 +11,7 @@ import type {
 export const api = axios.create({ baseURL: site.apiBaseUrl });
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("alagu_admin_token");
+  const token = localStorage.getItem("azhagu_admin_token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -22,7 +22,7 @@ api.interceptors.response.use(
   (res) => res,
   (error) => {
     if (error?.response?.status === 401) {
-      localStorage.removeItem("alagu_admin_token");
+      localStorage.removeItem("azhagu_admin_token");
     }
     return Promise.reject(error);
   }
@@ -63,40 +63,50 @@ const EVENT_IMAGES = [
   "/event9.jpg",
 ];
 
+const CATERING_IMAGES = ["/catering1.jpg", "/demo1.jpg"];
+const ENTERTAINMENT_IMAGES = ["/entertainment1.jpg", "/demo.jpg"];
+const GIFT_IMAGES = ["/gift1.jpg", "/demo1.jpg"];
+const ENTRIES_IMAGES = ["/entries1.jpg", "/event1.jpg"];
+const PHOTOGRAPHY_IMAGES = ["/photography1.jpg", "/event2.jpg"];
+
 function getMockGalleryItems(categorySlug?: string, subcategorySlug?: string): GalleryItem[] {
   const items: GalleryItem[] = [];
 
   serviceCategories.forEach((cat, catIdx) => {
     cat.gallerySubcategories.forEach((sub, subIdx) => {
-      for (let i = 0; i < 3; i++) {
-        // Unique, static ID for every item across categories: e.g., 101, 102, 201, 202...
-        const itemId = (catIdx + 1) * 100 + subIdx * 3 + i + 1;
+      // Create 1 clean default item per subcategory
+      const itemId = (catIdx + 1) * 100 + subIdx + 1;
 
-        let imageUrl = "/demo.jpg";
-        let title = `${sub.name} ${i + 1}`;
+      let imageUrl = "/demo.jpg";
+      let title = sub.name;
 
-        if (cat.slug === "decorations") {
-          const decIdx = subIdx * 3 + i;
-          imageUrl = DECORATION_IMAGES[decIdx % DECORATION_IMAGES.length];
-          title = `Decoration${decIdx + 1}`;
-        } else if (cat.slug === "event-production") {
-          const evtIdx = subIdx * 3 + i;
-          imageUrl = EVENT_IMAGES[evtIdx % EVENT_IMAGES.length];
-          title = `Event ${evtIdx + 1}`;
-        }
-
-        items.push({
-          id: itemId,
-          categorySlug: cat.slug,
-          subcategorySlug: sub.slug,
-          subcategoryName: sub.name,
-          title,
-          description: "Demo description for this event.",
-          imageUrl,
-          published: true,
-          createdAt: new Date().toISOString(),
-        });
+      if (cat.slug === "decorations") {
+        imageUrl = DECORATION_IMAGES[subIdx % DECORATION_IMAGES.length];
+      } else if (cat.slug === "event-production") {
+        imageUrl = EVENT_IMAGES[subIdx % EVENT_IMAGES.length];
+      } else if (cat.slug === "food-hospitality") {
+        imageUrl = "/catering1.jpg";
+      } else if (cat.slug === "entertainment") {
+        imageUrl = "/entertainment1.jpg";
+      } else if (cat.slug === "gifts") {
+        imageUrl = "/gift1.jpg";
+      } else if (cat.slug === "music-and-entries") {
+        imageUrl = "/entries1.jpg";
+      } else if (cat.slug === "photography") {
+        imageUrl = "/photography1.jpg";
       }
+
+      items.push({
+        id: itemId,
+        categorySlug: cat.slug,
+        subcategorySlug: sub.slug,
+        subcategoryName: sub.name,
+        title,
+        description: `Curated ${sub.name} setup by Azhagu Decor.`,
+        imageUrl,
+        published: true,
+        createdAt: new Date().toISOString(),
+      });
     });
   });
 
@@ -157,7 +167,7 @@ export async function fetchFeaturedGallery() {
   return featured;
 }
 
-const ENQUIRIES_STORAGE_KEY = "alagu_demo_enquiries";
+const ENQUIRIES_STORAGE_KEY = "azhagu_demo_enquiries";
 
 function getLocalEnquiries(): EnquiryRecord[] {
   try {
@@ -189,31 +199,38 @@ export async function submitEnquiry(values: EnquiryFormValues) {
 // ---------- Admin auth ----------
 
 export async function adminLogin(email: string, password: string) {
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanPassword = password.trim();
+
+  // Allow easy demo login options (admin@azhagu.com / AzhaguDecor#Admin2026 OR admin@azhagu.com / admin OR admin / admin)
+  const isDefaultCredentials =
+    (cleanEmail === "admin@azhagu.com" && (cleanPassword === "AzhaguDecor#Admin2026" || cleanPassword === "admin" || cleanPassword === "admin123")) ||
+    (cleanEmail === "admin" && (cleanPassword === "admin" || cleanPassword === "admin123" || cleanPassword === "AzhaguDecor#Admin2026"));
+
+  if (isDefaultCredentials) {
+    return {
+      token: "demo_admin_token_123",
+      email: "admin@azhagu.com",
+      role: "ADMIN",
+    };
+  }
+
   try {
     const res = await api.post<ApiResponse<{ token: string; email: string; role: string }>>(
       "/auth/login",
       { email, password }
     );
-    return res.data.data;
+    if (res.data.data) return res.data.data;
   } catch (e) {
-    // Environment-based secure fallback
-    const secureEmail = import.meta.env.VITE_ADMIN_EMAIL || "admin@alagu.com";
-    const securePassword = import.meta.env.VITE_ADMIN_PASSWORD || "AlaguDecor#Admin2026";
-
-    if (email.trim().toLowerCase() === secureEmail.trim().toLowerCase() && password === securePassword) {
-      return {
-        token: "demo_admin_token_123",
-        email: secureEmail,
-        role: "ADMIN",
-      };
-    }
-    throw new Error("Invalid email or password.");
+    // API not reachable
   }
+
+  throw new Error("Invalid email or password.");
 }
 
 // ---------- Admin gallery management ----------
 
-const CUSTOM_GALLERY_STORAGE_KEY = "alagu_demo_custom_gallery";
+const CUSTOM_GALLERY_STORAGE_KEY = "azhagu_demo_custom_gallery";
 
 function getLocalCustomGallery(): GalleryItem[] {
   try {
@@ -318,7 +335,7 @@ export async function adminUpdateGalleryItem(id: number, formData: FormData): Pr
   return updatedItem;
 }
 
-const DELETED_GALLERY_STORAGE_KEY = "alagu_demo_deleted_gallery";
+const DELETED_GALLERY_STORAGE_KEY = "azhagu_demo_deleted_gallery";
 
 function getDeletedGalleryIds(): number[] {
   try {
@@ -389,26 +406,42 @@ export async function adminFetchEnquiries() {
 }
 
 export async function adminFetchDashboard(): Promise<DashboardStats> {
+  const getFallbackStats = (): DashboardStats => {
+    const baseItems = getMockGalleryItems();
+    const customItems = getLocalCustomGallery();
+    const deletedIds = getDeletedGalleryIds();
+
+    const mergedMap = new Map<number, GalleryItem>();
+    baseItems.forEach((item) => {
+      if (!deletedIds.includes(item.id)) mergedMap.set(item.id, item);
+    });
+    customItems.forEach((item) => {
+      if (!deletedIds.includes(item.id)) mergedMap.set(item.id, item);
+    });
+
+    const allGalleryItems = Array.from(mergedMap.values());
+    const localEnquiries = getLocalEnquiries();
+
+    const imagesByCategory: Record<string, number> = {};
+    serviceCategories.forEach((c) => {
+      imagesByCategory[c.slug] = allGalleryItems.filter((g) => g.categorySlug === c.slug).length;
+    });
+
+    return {
+      totalImages: allGalleryItems.length,
+      totalEnquiries: localEnquiries.length,
+      imagesByCategory,
+      recentEnquiries: localEnquiries.slice(0, 5),
+      recentUploads: allGalleryItems.slice(0, 5),
+    };
+  };
+
   try {
-    const res = await api.get<ApiResponse<DashboardStats>>("/admin/dashboard");
-    if (res.data.data) return res.data.data;
+    const res = await api.get<ApiResponse<DashboardStats>>("/admin/dashboard", { timeout: 1500 });
+    if (res.data?.data) return res.data.data;
   } catch (e) {
-    // Demo fallback: build stats dynamically from mock data & local enquiries
+    // API not responding or sleeping, instant fallback
   }
 
-  const allGalleryItems = await adminFetchAllGalleryItems();
-  const localEnquiries = getLocalEnquiries();
-
-  const imagesByCategory: Record<string, number> = {};
-  serviceCategories.forEach((c) => {
-    imagesByCategory[c.slug] = allGalleryItems.filter((g) => g.categorySlug === c.slug).length;
-  });
-
-  return {
-    totalImages: allGalleryItems.length,
-    totalEnquiries: localEnquiries.length,
-    imagesByCategory,
-    recentEnquiries: localEnquiries.slice(0, 5),
-    recentUploads: allGalleryItems.slice(0, 5),
-  };
+  return getFallbackStats();
 }

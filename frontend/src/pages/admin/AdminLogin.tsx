@@ -32,7 +32,7 @@ export default function AdminLogin() {
         onSubmit={handleSubmit}
         className="w-full max-w-sm bg-ivory p-10"
       >
-        <p className="font-display text-2xl mb-1">Alagu Admin</p>
+        <p className="font-display text-2xl mb-1">Azhagu Admin</p>
         <p className="text-xs uppercase tracking-widest2 text-charcoal/40 mb-8">
           Gallery & Enquiry Management
         </p>

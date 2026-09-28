@@ -10,8 +10,8 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
-const TOKEN_KEY = "alagu_admin_token";
-const USER_KEY = "alagu_admin_user";
+const TOKEN_KEY = "azhagu_admin_token";
+const USER_KEY = "azhagu_admin_user";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AdminUser | null>(null);

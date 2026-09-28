@@ -20,7 +20,7 @@ export function AdminLayout() {
       {/* Mobile Header */}
       <header className="md:hidden bg-charcoal text-ivory flex items-center justify-between px-6 py-4">
         <Link to="/admin/dashboard" className="font-display text-lg">
-          Alagu Admin
+          Azhagu Admin
         </Link>
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -59,7 +59,7 @@ export function AdminLayout() {
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-60 bg-charcoal text-ivory flex-col p-6 shrink-0 min-h-screen">
         <Link to="/admin/dashboard" className="font-display text-lg mb-10">
-          Alagu Admin
+          Azhagu Admin
         </Link>
         <nav className="flex flex-col gap-1">
           {links.map((l) => (

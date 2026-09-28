@@ -6,7 +6,7 @@ export default function About() {
   return (
     <div>
       <section className="max-w-5xl mx-auto px-6 py-24">
-        <SectionHeading eyebrow="About Us" title="Alagu Decor & Wedding Planner" />
+        <SectionHeading eyebrow="About Us" title="Azhagu Decor & Wedding Planner" />
         <FadeIn className="mt-8">
           <p className="font-display text-2xl md:text-3xl font-light leading-relaxed text-charcoal/80">
             We started as decorators. Today we're a full production studio —

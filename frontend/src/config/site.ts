@@ -1,11 +1,14 @@
 export const site = {
-  name: "Alagu Decor & Wedding Planner",
-  brandLine1: "ALAGU",
+  name: "Azhagu Decor & Wedding Planner",
+  brandLine1: "AZHAGU",
   brandLine2: "DECOR & WEDDING PLANNER",
   message: import.meta.env.VITE_BRAND_MESSAGE || "Your Vision. Our Creation.",
   apiBaseUrl: import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api",
   whatsappNumber: "919095794840",
-  instagramUrl: import.meta.env.VITE_INSTAGRAM_URL || "",
+  phone1: "9095794840",
+  phone2: "9715887562",
+  instagramUrl: "https://www.instagram.com/azhagu_decor_wedding_planer?utm_source=ig_web_button_share_sheet&stkn=ZDNlZDc0MzIxNw==",
+  address: "Near SRR Mahal, Kuthukalvalasai, Tenkasi",
 } as const;
 
 /**
@@ -14,7 +17,7 @@ export const site = {
  */
 export function buildWhatsAppLink(contextMessage?: string): string {
   const defaultMessage =
-    "Hi Alagu Decor & Wedding Planner, I'm interested in your services and would like to discuss my event.";
+    "Hi Azhagu Decor & Wedding Planner, I'm interested in your services and would like to discuss my event.";
   const text = encodeURIComponent(contextMessage || defaultMessage);
   return `https://wa.me/${site.whatsappNumber}?text=${text}`;
 }
