@@ -556,7 +556,7 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
       query = query.eq("category_slug", categorySlug);
     }
     const { data, error } = await query;
-    if (!error && data && data.length > 0) {
+    if (!error && data !== null) {
       const supabaseItems: GalleryItem[] = data.map((item: any) => ({
         id: item.id,
         categorySlug: item.category_slug,
@@ -569,9 +569,8 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
         createdAt: item.created_at,
       }));
 
-      // Filter out deleted ones locally
-      const deletedIds = getDeletedGalleryIds();
-      return supabaseItems.filter((item) => !deletedIds.includes(item.id));
+      // Return Supabase list directly
+      return supabaseItems;
     }
   } catch (e) {}
 
@@ -584,7 +583,7 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
     if (res.data.data && res.data.data.length > 0) return res.data.data;
   } catch (e) {}
 
-  // 3. Demo fallback
+  // 3. Demo fallback only if database completely unreachable
   const baseItems = getMockGalleryItems(categorySlug);
   const customItems = getLocalCustomGallery();
   const deletedIds = getDeletedGalleryIds();
@@ -603,6 +602,7 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
 
   return Array.from(mergedMap.values());
 }
+
 
 
 // ---------- Admin enquiries ----------
