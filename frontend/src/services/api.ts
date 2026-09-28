@@ -30,7 +30,7 @@ api.interceptors.response.use(
   }
 );
 
-import { serviceCategories } from "@/config/services";
+import { serviceCategories, getCategoryBySlug } from "@/config/services";
 
 const DECORATION_IMAGES = [
   "/decoration1.jpg",
@@ -260,41 +260,74 @@ export async function adminCreateGalleryItem(formData: FormData): Promise<Galler
   const imageUrl = await uploadImageToStorage(file);
   const storagePublicId = imageUrl.split("/").pop() || ("img_" + Date.now());
 
-  // 2. Query category_id
+  // 2. Query category_id (or create if missing)
+  let categoryId: number;
   const catQuery = await supabaseAdmin
     .from("gallery_categories")
     .select("id")
     .eq("slug", categorySlug)
-    .single();
+    .maybeSingle();
 
-  if (catQuery.error || !catQuery.data) {
-    console.error("Category lookup error:", catQuery.error);
-    throw new Error(`Category "${categorySlug}" not found in database. Please contact support.`);
-  }
-  const categoryId = catQuery.data.id;
-
-  // 3. Query subcategory_id scoped to this category
-  let subcategoryId: number | null = null;
-  if (subcategorySlug) {
-    const subQuery = await supabaseAdmin
-      .from("gallery_subcategories")
+  if (catQuery.data?.id) {
+    categoryId = catQuery.data.id;
+  } else {
+    // Auto-create category in DB if it doesn't exist yet
+    const catInfo = getCategoryBySlug(categorySlug);
+    const catName = catInfo?.name || categorySlug.charAt(0).toUpperCase() + categorySlug.slice(1);
+    const newCat = await supabaseAdmin
+      .from("gallery_categories")
+      .insert([{ name: catName, slug: categorySlug }])
       .select("id")
-      .eq("category_id", categoryId)
-      .eq("slug", subcategorySlug)
       .single();
-    if (subQuery.data) subcategoryId = subQuery.data.id;
+    if (newCat.error || !newCat.data) {
+      console.error("Category create error:", newCat.error);
+      throw new Error(`Failed to create category "${categorySlug}": ${newCat.error?.message}`);
+    }
+    categoryId = newCat.data.id;
   }
-  // Fallback to first subcategory in category
-  if (!subcategoryId) {
-    const defaultSub = await supabaseAdmin
+
+  // 3. Query subcategory_id (or create if missing)
+  let subcategoryId: number;
+  const subSlug = subcategorySlug || categorySlug;
+  const subQuery = await supabaseAdmin
+    .from("gallery_subcategories")
+    .select("id")
+    .eq("category_id", categoryId)
+    .eq("slug", subSlug)
+    .maybeSingle();
+
+  if (subQuery.data?.id) {
+    subcategoryId = subQuery.data.id;
+  } else {
+    // Try finding any subcategory for this category first
+    const fallbackSub = await supabaseAdmin
       .from("gallery_subcategories")
       .select("id")
       .eq("category_id", categoryId)
       .limit(1)
-      .single();
-    if (defaultSub.data) subcategoryId = defaultSub.data.id;
+      .maybeSingle();
+
+    if (fallbackSub.data?.id) {
+      subcategoryId = fallbackSub.data.id;
+    } else {
+      // Auto-create subcategory in DB
+      const catInfo = getCategoryBySlug(categorySlug);
+      const subInfo = catInfo?.gallerySubcategories.find((s: any) => s.slug === subSlug);
+      const subName = subInfo?.name || subSlug.charAt(0).toUpperCase() + subSlug.slice(1);
+
+      const newSub = await supabaseAdmin
+        .from("gallery_subcategories")
+        .insert([{ category_id: categoryId, name: subName, slug: subSlug }])
+        .select("id")
+        .single();
+
+      if (newSub.error || !newSub.data) {
+        console.error("Subcategory create error:", newSub.error);
+        throw new Error(`Failed to create subcategory "${subSlug}": ${newSub.error?.message}`);
+      }
+      subcategoryId = newSub.data.id;
+    }
   }
-  if (!subcategoryId) throw new Error(`No subcategory found for category "${categorySlug}".`);
 
   // 4. Insert gallery item
   const { data, error } = await supabaseAdmin

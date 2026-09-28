@@ -3,11 +3,12 @@ import { createClient } from "@supabase/supabase-js";
 const supabaseUrl = "https://liszotiorqqcbuwhwbvu.supabase.co";
 
 // Publishable key — safe for public reads (gallery display)
-const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+const supabasePublishableKey =
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  "sb_publishable_x5KnwBSSCmz_OxKl5cyskw_R600Qzly";
 
 // Secret key — used ONLY for admin write operations (upload / delete)
-// Stored as an environment variable, never hardcoded in source.
-const supabaseSecretKey = import.meta.env.VITE_SUPABASE_SECRET_KEY as string;
+const supabaseSecretKey = import.meta.env.VITE_SUPABASE_SECRET_KEY || supabasePublishableKey;
 
 // Public client (read-only gallery queries)
 export const supabase = createClient(supabaseUrl, supabasePublishableKey);

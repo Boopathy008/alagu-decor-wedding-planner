@@ -80,7 +80,9 @@ export default function AdminGalleryForm() {
       }
       navigate(`/admin/gallery/${categorySlug}`);
     } catch (err: any) {
-      setError(err?.message || "Upload failed. Check file size/type and try again.");
+      console.error("Gallery form save error:", err);
+      const msg = typeof err === "string" ? err : err?.message || JSON.stringify(err);
+      setError(msg || "Upload failed. Check file size/type and try again.");
     } finally {
       clearTimeout(wakeTimer);
       setSaving(false);
