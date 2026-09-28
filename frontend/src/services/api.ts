@@ -75,7 +75,7 @@ function getMockGalleryItems(categorySlug?: string, subcategorySlug?: string): G
   return [];
 }
 
-import { supabase } from "./supabaseClient";
+import { supabase, supabaseAdmin } from "./supabaseClient";
 
 // ---------- Public gallery ----------
 
@@ -225,6 +225,27 @@ export async function adminLogin(email: string, password: string) {
 
 // ---------- Admin gallery management ----------
 
+// ---- Helper: upload image file to Supabase Storage and return public URL ----
+async function uploadImageToStorage(file: File): Promise<string> {
+  const ext = file.name.split(".").pop() || "jpg";
+  const fileName = `gallery/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+
+  const { error: uploadError } = await supabaseAdmin.storage
+    .from("gallery-images")
+    .upload(fileName, file, { cacheControl: "3600", upsert: false, contentType: file.type });
+
+  if (uploadError) {
+    console.error("Storage upload error:", uploadError);
+    throw new Error(`Image upload failed: ${uploadError.message}`);
+  }
+
+  const { data: urlData } = supabaseAdmin.storage
+    .from("gallery-images")
+    .getPublicUrl(fileName);
+
+  return urlData.publicUrl;
+}
+
 export async function adminCreateGalleryItem(formData: FormData): Promise<GalleryItem> {
   const categorySlug = (formData.get("categorySlug") as string) || "decorations";
   const subcategorySlug = (formData.get("subcategorySlug") as string) || "";
@@ -233,17 +254,14 @@ export async function adminCreateGalleryItem(formData: FormData): Promise<Galler
   const published = formData.get("published") === "true";
   const file = formData.get("image") as File | null;
 
-  let imageUrl = "/demo.jpg";
-  if (file) {
-    imageUrl = await new Promise<string>((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.readAsDataURL(file);
-    });
-  }
+  if (!file) throw new Error("Please select an image to upload.");
 
-  // 1. Query category_id from Supabase
-  const catQuery = await supabase
+  // 1. Upload image to Supabase Storage
+  const imageUrl = await uploadImageToStorage(file);
+  const storagePublicId = imageUrl.split("/").pop() || ("img_" + Date.now());
+
+  // 2. Query category_id
+  const catQuery = await supabaseAdmin
     .from("gallery_categories")
     .select("id")
     .eq("slug", categorySlug)
@@ -251,60 +269,47 @@ export async function adminCreateGalleryItem(formData: FormData): Promise<Galler
 
   if (catQuery.error || !catQuery.data) {
     console.error("Category lookup error:", catQuery.error);
-    throw new Error(`Category ${categorySlug} not found in database.`);
+    throw new Error(`Category "${categorySlug}" not found in database. Please contact support.`);
   }
-
   const categoryId = catQuery.data.id;
 
-  // 2. Query subcategory_id scoped to categoryId
+  // 3. Query subcategory_id scoped to this category
   let subcategoryId: number | null = null;
   if (subcategorySlug) {
-    const subQuery = await supabase
+    const subQuery = await supabaseAdmin
       .from("gallery_subcategories")
       .select("id")
       .eq("category_id", categoryId)
       .eq("slug", subcategorySlug)
       .single();
-
-    if (subQuery.data) {
-      subcategoryId = subQuery.data.id;
-    }
+    if (subQuery.data) subcategoryId = subQuery.data.id;
   }
-
-  // Fallback to first available subcategory if subcategory not provided or not matched
+  // Fallback to first subcategory in category
   if (!subcategoryId) {
-    const defaultSub = await supabase
+    const defaultSub = await supabaseAdmin
       .from("gallery_subcategories")
       .select("id")
       .eq("category_id", categoryId)
       .limit(1)
       .single();
-
-    if (defaultSub.data) {
-      subcategoryId = defaultSub.data.id;
-    }
+    if (defaultSub.data) subcategoryId = defaultSub.data.id;
   }
+  if (!subcategoryId) throw new Error(`No subcategory found for category "${categorySlug}".`);
 
-  if (!subcategoryId) {
-    throw new Error(`Subcategory not found for category ${categorySlug}`);
-  }
-
-  // 3. Insert into Supabase gallery_items
-  const { data, error } = await supabase
+  // 4. Insert gallery item
+  const { data, error } = await supabaseAdmin
     .from("gallery_items")
-    .insert([
-      {
-        category_id: categoryId,
-        subcategory_id: subcategoryId,
-        title,
-        description,
-        image_url: imageUrl,
-        cloudinary_public_id: "base64_" + Date.now(),
-        published,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-    ])
+    .insert([{
+      category_id: categoryId,
+      subcategory_id: subcategoryId,
+      title,
+      description,
+      image_url: imageUrl,
+      cloudinary_public_id: storagePublicId,
+      published,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }])
     .select("*, gallery_categories(slug), gallery_subcategories(slug, name)")
     .single();
 
@@ -342,7 +347,7 @@ export async function adminUpdateGalleryItem(id: number, formData: FormData): Pr
   };
 
   if (categorySlug) {
-    const catQuery = await supabase
+    const catQuery = await supabaseAdmin
       .from("gallery_categories")
       .select("id")
       .eq("slug", categorySlug)
@@ -351,13 +356,12 @@ export async function adminUpdateGalleryItem(id: number, formData: FormData): Pr
     if (catQuery.data) {
       updateData.category_id = catQuery.data.id;
       if (subcategorySlug) {
-        const subQuery = await supabase
+        const subQuery = await supabaseAdmin
           .from("gallery_subcategories")
           .select("id")
           .eq("category_id", catQuery.data.id)
           .eq("slug", subcategorySlug)
           .single();
-
         if (subQuery.data) {
           updateData.subcategory_id = subQuery.data.id;
         }
@@ -366,15 +370,12 @@ export async function adminUpdateGalleryItem(id: number, formData: FormData): Pr
   }
 
   if (file) {
-    const imageUrl = await new Promise<string>((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.readAsDataURL(file);
-    });
+    const imageUrl = await uploadImageToStorage(file);
     updateData.image_url = imageUrl;
+    updateData.cloudinary_public_id = imageUrl.split("/").pop() || ("img_" + Date.now());
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from("gallery_items")
     .update(updateData)
     .eq("id", id)
@@ -400,7 +401,7 @@ export async function adminUpdateGalleryItem(id: number, formData: FormData): Pr
 }
 
 export async function adminDeleteGalleryItem(id: number) {
-  const { error } = await supabase.from("gallery_items").delete().eq("id", id);
+  const { error } = await supabaseAdmin.from("gallery_items").delete().eq("id", id);
   if (error) {
     console.error("Supabase delete error:", error);
     throw new Error(`Failed to delete gallery item: ${error.message}`);
