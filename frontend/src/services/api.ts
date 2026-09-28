@@ -212,10 +212,55 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
+async function compressImageFile(file: File): Promise<File> {
+  if (!file || !file.type.startsWith("image/")) return file;
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement("canvas");
+      let { width, height } = img;
+      const maxDim = 1200;
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return resolve(file);
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) return resolve(file);
+          const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, ".jpg"), {
+            type: "image/jpeg",
+          });
+          resolve(compressedFile);
+        },
+        "image/jpeg",
+        0.82
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(file);
+    };
+    img.src = url;
+  });
+}
+
 // ---- Helper: upload image file to Supabase Storage and return public URL ----
-async function uploadImageToStorage(file: File): Promise<string> {
+async function uploadImageToStorage(rawFile: File): Promise<string> {
+  const file = await compressImageFile(rawFile);
   try {
-    const ext = file.name.split(".").pop() || "jpg";
+    const ext = "jpg";
     const fileName = `gallery/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
 
     const { error: uploadError } = await supabaseAdmin.storage
@@ -244,9 +289,11 @@ export async function adminCreateGalleryItem(formData: FormData): Promise<Galler
   const title = (formData.get("title") as string) || "Gallery Image";
   const description = (formData.get("description") as string) || "";
   const published = formData.get("published") === "true";
-  const file = formData.get("image") as File | null;
+  const rawFile = formData.get("image") as File | null;
 
-  if (!file) throw new Error("Please select an image to upload.");
+  if (!rawFile) throw new Error("Please select an image to upload.");
+
+  const file = await compressImageFile(rawFile);
 
   // 1. Get image URL (Storage URL or Base64 Data URL fallback)
   const imageUrl = await uploadImageToStorage(file);
