@@ -618,42 +618,20 @@ export async function adminFetchEnquiries() {
 }
 
 export async function adminFetchDashboard(): Promise<DashboardStats> {
-  const getFallbackStats = (): DashboardStats => {
-    const baseItems = getMockGalleryItems();
-    const customItems = getLocalCustomGallery();
-    const deletedIds = getDeletedGalleryIds();
+  const allGalleryItems = await adminFetchAllGalleryItems();
+  const localEnquiries = await adminFetchEnquiries();
 
-    const mergedMap = new Map<number, GalleryItem>();
-    baseItems.forEach((item) => {
-      if (!deletedIds.includes(item.id)) mergedMap.set(item.id, item);
-    });
-    customItems.forEach((item) => {
-      if (!deletedIds.includes(item.id)) mergedMap.set(item.id, item);
-    });
+  const imagesByCategory: Record<string, number> = {};
+  serviceCategories.forEach((c) => {
+    imagesByCategory[c.slug] = allGalleryItems.filter((g) => g.categorySlug === c.slug).length;
+  });
 
-    const allGalleryItems = Array.from(mergedMap.values());
-    const localEnquiries = getLocalEnquiries();
-
-    const imagesByCategory: Record<string, number> = {};
-    serviceCategories.forEach((c) => {
-      imagesByCategory[c.slug] = allGalleryItems.filter((g) => g.categorySlug === c.slug).length;
-    });
-
-    return {
-      totalImages: allGalleryItems.length,
-      totalEnquiries: localEnquiries.length,
-      imagesByCategory,
-      recentEnquiries: localEnquiries.slice(0, 5),
-      recentUploads: allGalleryItems.slice(0, 5),
-    };
+  return {
+    totalImages: allGalleryItems.length,
+    totalEnquiries: localEnquiries.length,
+    imagesByCategory,
+    recentEnquiries: localEnquiries.slice(0, 5),
+    recentUploads: allGalleryItems.slice(0, 5),
   };
-
-  try {
-    const res = await api.get<ApiResponse<DashboardStats>>("/admin/dashboard", { timeout: 1500 });
-    if (res.data?.data) return res.data.data;
-  } catch (e) {
-    // API not responding or sleeping, instant fallback
-  }
-
-  return getFallbackStats();
 }
+
