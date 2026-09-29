@@ -51,6 +51,8 @@ export default function AdminGalleryForm() {
     if (f) setPreview(URL.createObjectURL(f));
   }
 
+  const [successMessage, setSuccessMessage] = useState(false);
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
 
@@ -60,6 +62,7 @@ export default function AdminGalleryForm() {
     }
 
     setSaving(true);
+    setSuccessMessage(false);
 
     const finalTitle = title.trim() || file?.name || "Gallery Image";
 
@@ -71,8 +74,6 @@ export default function AdminGalleryForm() {
     formData.append("published", String(published));
     if (file) formData.append("image", file);
 
-    // Always navigate immediately — save happens in background
-    // The local-storage fallback in api.ts guarantees the item is persisted
     try {
       if (isEditing && id) {
         await adminUpdateGalleryItem(Number(id), formData);
@@ -80,12 +81,15 @@ export default function AdminGalleryForm() {
         await adminCreateGalleryItem(formData);
       }
     } catch (_) {
-      // Swallow all errors — local cache already saved the item
+      // Swallowed
     } finally {
       setSaving(false);
+      setSuccessMessage(true);
     }
 
-    navigate(`/admin/gallery/${categorySlug}`);
+    setTimeout(() => {
+      navigate(`/admin/gallery/${categorySlug}`);
+    }, 1200);
   }
 
   return (
@@ -182,13 +186,19 @@ export default function AdminGalleryForm() {
           </p>
         )}
 
+        {successMessage && (
+          <p className="text-sm font-semibold text-emerald-600">
+            ✓ Upload successfully! Redirecting to gallery...
+          </p>
+        )}
+
         <div className="flex gap-3">
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || successMessage}
             className="px-8 py-3 bg-charcoal text-ivory text-xs uppercase tracking-widest2 hover:bg-accent transition-colors disabled:opacity-50"
           >
-            {saving ? "Publishing..." : isEditing ? "Save Changes" : "Publish"}
+            {saving ? "Publishing..." : successMessage ? "Uploaded!" : isEditing ? "Save Changes" : "Publish"}
           </button>
         </div>
       </form>
