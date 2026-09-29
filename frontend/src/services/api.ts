@@ -293,12 +293,15 @@ export async function adminCreateGalleryItem(formData: FormData): Promise<Galler
 
   if (!rawFile) throw new Error("Please select an image to upload.");
 
+  const catInfo = getCategoryBySlug(categorySlug);
+  const defaultSubcategorySlug = subcategorySlug || catInfo?.gallerySubcategories[0]?.slug || categorySlug;
+
   // ── Bulletproof wrapper: NOTHING below can ever throw to the caller ──
   const emergencyItem: GalleryItem = {
     id: Date.now(),
     categorySlug,
-    subcategorySlug: subcategorySlug || categorySlug,
-    subcategoryName: subcategorySlug || categorySlug,
+    subcategorySlug: defaultSubcategorySlug,
+    subcategoryName: defaultSubcategorySlug,
     title,
     description,
     imageUrl: "",
