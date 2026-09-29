@@ -349,7 +349,7 @@ export async function adminCreateGalleryItem(formData: FormData): Promise<Galler
       }
 
       let subcategoryId = 0;
-      const subSlug = subcategorySlug || categorySlug;
+      const subSlug = defaultSubcategorySlug;
       const subQuery = await supabaseAdmin
         .from("gallery_subcategories")
         .select("id")
