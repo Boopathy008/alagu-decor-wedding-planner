@@ -263,9 +263,15 @@ async function uploadImageToStorage(rawFile: File): Promise<string> {
     const ext = "jpg";
     const fileName = `gallery/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
 
-    const { error: uploadError } = await supabaseAdmin.storage
+    const uploadPromise = supabaseAdmin.storage
       .from("gallery-images")
       .upload(fileName, file, { cacheControl: "3600", upsert: true, contentType: file.type });
+
+    const timeoutPromise = new Promise<{ error: any }>((resolve) =>
+      setTimeout(() => resolve({ error: new Error("Storage upload timeout after 5s") }), 5000)
+    );
+
+    const { error: uploadError } = await Promise.race([uploadPromise, timeoutPromise]);
 
     if (!uploadError) {
       const { data: urlData } = supabaseAdmin.storage
