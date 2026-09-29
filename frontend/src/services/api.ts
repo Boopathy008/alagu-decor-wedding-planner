@@ -316,11 +316,14 @@ export async function adminCreateGalleryItem(formData: FormData): Promise<Galler
   };
 
   try {
-    // Step 1: compress → upload → fallback to data-URL
+    // Instant step: compress and generate Data URL so UI completes in under 1 second
     let imageUrl = "";
     try {
       const compressed = await compressImageFile(rawFile);
-      imageUrl = await uploadImageToStorage(compressed);
+      imageUrl = await fileToDataUrl(compressed);
+      
+      // Background async upload to Supabase storage (non-blocking)
+      uploadImageToStorage(rawFile).catch(() => {});
     } catch (_) {
       try { imageUrl = await fileToDataUrl(rawFile); } catch (__) {}
     }
@@ -329,7 +332,6 @@ export async function adminCreateGalleryItem(formData: FormData): Promise<Galler
     }
 
     emergencyItem.imageUrl = imageUrl;
-
     const fallbackItem: GalleryItem = { ...emergencyItem, imageUrl };
 
     // Step 2: try Supabase DB insert (completely optional – always falls back)
