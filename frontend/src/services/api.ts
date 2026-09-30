@@ -202,10 +202,23 @@ export async function fetchGalleryByCategoryAndSubcategory(
 export async function fetchFeaturedGallery(): Promise<GalleryItem[]> {
   const all = await adminFetchAllGalleryItems();
   const featured: GalleryItem[] = [];
+
   serviceCategories.forEach((c) => {
-    const match = all.find((item) => item.categorySlug === c.slug && item.published);
+    const firstSubSlug = c.gallerySubcategories[0]?.slug;
+
+    // 1. Prefer the latest published image from the category's FIRST subcategory
+    let match = all.find(
+      (item) => item.categorySlug === c.slug && item.subcategorySlug === firstSubSlug && item.published
+    );
+
+    // 2. Fallback to the latest published image in the category if first subcategory has no uploads yet
+    if (!match) {
+      match = all.find((item) => item.categorySlug === c.slug && item.published);
+    }
+
     if (match) featured.push(match);
   });
+
   return featured;
 }
 
