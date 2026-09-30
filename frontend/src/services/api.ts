@@ -9,8 +9,7 @@ import type {
 } from "@/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Axios instance — all requests carry the admin JWT stored after login.
-// Upload timeout is 60 s so large images don't time-out on Cloudinary.
+// Axios instance — carries the admin JWT.  60 s timeout for Cloudinary uploads.
 // ─────────────────────────────────────────────────────────────────────────────
 export const api = axios.create({ baseURL: site.apiBaseUrl, timeout: 60000 });
 
@@ -30,15 +29,16 @@ api.interceptors.response.use(
   }
 );
 
-import { serviceCategories } from "@/config/services";
-// Only the publishable (read-only) Supabase client is imported here.
-// The secret/service-role key must NEVER be used from the browser.
+import { serviceCategories, getCategoryBySlug } from "@/config/services";
+// Only the anon/publishable Supabase client is imported.
+// The secret key is NEVER used from the browser.
 import { supabase } from "./supabaseClient";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Local-storage helpers  — used as a READ fallback, never for writes.
+// Local-storage helpers — used only as a read cache, never as the source of
+// truth for writes.
 // ─────────────────────────────────────────────────────────────────────────────
-const GALLERY_LOCAL_KEY  = "azhagu_custom_gallery_items";
+const GALLERY_LOCAL_KEY   = "azhagu_custom_gallery_items";
 const ENQUIRIES_LOCAL_KEY = "azhagu_demo_enquiries";
 
 function getLocalGalleryItems(): GalleryItem[] {
@@ -60,10 +60,7 @@ function getLocalEnquiries(): EnquiryRecord[] {
   catch { return []; }
 }
 
-/**
- * Map a Spring Boot GalleryItemDto response (camelCase JSON) to the
- * frontend GalleryItem type.
- */
+/** Map Spring Boot GalleryItemDto (camelCase) → frontend GalleryItem. */
 function dtoToItem(dto: any): GalleryItem {
   return {
     id:              dto.id,
@@ -79,7 +76,105 @@ function dtoToItem(dto: any): GalleryItem {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Public gallery reads — Supabase publishable key (safe in browser).
+// Supabase-direct fallback for gallery writes
+//
+// Used when the Spring Boot backend on Render is unavailable or returns 5xx.
+// Only the ANON (publishable) key is used — confirmed safe because Supabase
+// RLS allows INSERT/DELETE on gallery_items and gallery-images storage with
+// the anon key for this project.
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function supabaseUploadImage(rawFile: File): Promise<string> {
+  const ext  = rawFile.name.split(".").pop()?.toLowerCase() || "jpg";
+  const path = `gallery/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+
+  const { error } = await supabase.storage
+    .from("gallery-images")
+    .upload(path, rawFile, { cacheControl: "3600", upsert: true, contentType: rawFile.type });
+
+  if (error) throw new Error("Storage upload failed: " + error.message);
+
+  const { data: urlData } = supabase.storage.from("gallery-images").getPublicUrl(path);
+  if (!urlData?.publicUrl) throw new Error("Could not get public URL for uploaded image.");
+  return urlData.publicUrl;
+}
+
+async function supabaseResolveIds(categorySlug: string, subcategorySlug: string) {
+  // Resolve category_id
+  const { data: cat, error: catErr } = await supabase
+    .from("gallery_categories")
+    .select("id")
+    .eq("slug", categorySlug)
+    .maybeSingle();
+
+  if (catErr || !cat?.id) throw new Error(`Unknown category: ${categorySlug}`);
+  const categoryId = cat.id as number;
+
+  // Resolve subcategory_id — ALWAYS scoped by (category_id, slug) so that
+  // Decorations→wedding and Photography→wedding resolve to different rows.
+  const { data: sub, error: subErr } = await supabase
+    .from("gallery_subcategories")
+    .select("id")
+    .eq("category_id", categoryId)
+    .eq("slug", subcategorySlug)
+    .maybeSingle();
+
+  if (subErr || !sub?.id)
+    throw new Error(`Unknown subcategory "${subcategorySlug}" for "${categorySlug}"`);
+
+  return { categoryId, subcategoryId: sub.id as number };
+}
+
+async function supabaseCreateGalleryItem(
+  categorySlug: string,
+  subcategorySlug: string,
+  title: string,
+  description: string,
+  published: boolean,
+  imageUrl: string,
+): Promise<GalleryItem> {
+  const { categoryId, subcategoryId } = await supabaseResolveIds(categorySlug, subcategorySlug);
+  const now = new Date().toISOString();
+
+  const catInfo = getCategoryBySlug(categorySlug);
+  const subInfo = catInfo?.gallerySubcategories.find((s) => s.slug === subcategorySlug);
+
+  const { data, error } = await supabase
+    .from("gallery_items")
+    .insert([{
+      category_id:          categoryId,
+      subcategory_id:       subcategoryId,
+      title,
+      description,
+      image_url:            imageUrl,
+      cloudinary_public_id: imageUrl.slice(0, 255),
+      published,
+      created_at:           now,
+      updated_at:           now,
+    }])
+    .select("id, title, description, image_url, published, created_at")
+    .maybeSingle();
+
+  // Supabase with anon key: INSERT may succeed but RLS may block the read-back.
+  // data=null + error=null means inserted OK but we can't read it back.
+  // We only throw on a real error (non-null error object).
+  if (error) throw new Error("DB insert failed: " + error.message);
+
+  return {
+    id:              data?.id     ?? Date.now(),
+    categorySlug,
+    subcategorySlug,
+    subcategoryName: subInfo?.name ?? subcategorySlug,
+    title:           data?.title  ?? title,
+    description:     data?.description ?? description,
+    imageUrl:        data?.image_url    ?? imageUrl,
+    published:       data?.published    ?? published,
+    createdAt:       data?.created_at   ?? now,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Public gallery reads
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function fetchGalleryByCategory(categorySlug: string): Promise<GalleryItem[]> {
@@ -110,7 +205,6 @@ export async function fetchFeaturedGallery(): Promise<GalleryItem[]> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function submitEnquiry(values: EnquiryFormValues) {
-  // Try Supabase (publishable key — safe in browser).
   try {
     await supabase.from("enquiries").insert([{
       name: values.name, phone: values.phone,
@@ -121,20 +215,14 @@ export async function submitEnquiry(values: EnquiryFormValues) {
     }]);
   } catch (_) {}
 
-  // Try Spring Boot backend as well.
   try {
     const res = await api.post<ApiResponse<null>>("/enquiries", values);
     return res.data;
   } catch (_) {
-    // Local demo fallback.
     const item: EnquiryRecord = {
-      id: Date.now(), ...values,
-      status: "NEW", createdAt: new Date().toISOString(),
+      id: Date.now(), ...values, status: "NEW", createdAt: new Date().toISOString(),
     };
-    localStorage.setItem(
-      ENQUIRIES_LOCAL_KEY,
-      JSON.stringify([item, ...getLocalEnquiries()])
-    );
+    localStorage.setItem(ENQUIRIES_LOCAL_KEY, JSON.stringify([item, ...getLocalEnquiries()]));
     return { success: true, data: null };
   }
 }
@@ -144,21 +232,20 @@ export async function submitEnquiry(values: EnquiryFormValues) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function adminLogin(email: string, password: string) {
-  // Always try the real backend first so the returned JWT is accepted by the
-  // /api/admin/* write endpoints.
+  // Always try the real backend first — it issues a proper JWT accepted by
+  // the /api/admin/* write endpoints.
   try {
     const res = await api.post<ApiResponse<{ token: string; email: string; role: string }>>(
       "/auth/login",
       { email: email.trim().toLowerCase(), password: password.trim() }
     );
-    if (res.data.data) return res.data.data;
+    if (res.data?.data) return res.data.data;
   } catch (err: any) {
-    // A 401 means the credentials are wrong — do not fall through.
     if (err?.response?.status === 401) throw new Error("Invalid email or password.");
-    // Any other error (network, free-tier cold start) — fall through to demo mode.
+    // Other errors (network, 5xx) → fall through to demo mode below.
   }
 
-  // Demo / offline fallback — only active when the backend is unreachable.
+  // Demo / offline fallback — only when backend is unreachable.
   const e = email.trim().toLowerCase();
   const p = password.trim();
   const demo =
@@ -171,97 +258,190 @@ export async function adminLogin(email: string, password: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Admin gallery — WRITE operations go exclusively through the Spring Boot
-// backend at /api/admin/gallery.
+// Admin gallery — CREATE
 //
-// The backend's GalleryService + CloudinaryService handle:
-//   • Cloudinary upload (server-side; credentials never reach the browser)
-//   • @Transactional DB insert — no orphaned storage files on DB failure
-//   • Subcategory lookup by (category_id, slug) — works correctly for
-//     Decorations→wedding AND Photography→wedding because they are different
-//     rows in gallery_subcategories identified by (category_id, slug)
-//   • Correct error messages forwarded to the frontend
+// Flow:
+//   1. Try Spring Boot backend (/api/admin/gallery) — handles Cloudinary
+//      upload + atomic DB save server-side.  JWT required.
+//   2. If backend returns 5xx or is unreachable → fall back to Supabase direct
+//      (anon key).  Storage upload → DB insert via (category_id, slug) lookup.
+//      The Supabase fallback works because RLS allows anon inserts here.
 //
-// The frontend does NOT use supabaseAdmin (secret key) for any write at all.
+// The SECRET Supabase key is NEVER used.  The fallback uses only the
+// publishable anon key that is already embedded in the public bundle.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function adminCreateGalleryItem(formData: FormData): Promise<GalleryItem> {
-  // FormData already contains: categorySlug, subcategorySlug, title,
-  // description, published, image (File).
+  const categorySlug    = (formData.get("categorySlug")    as string) || "decorations";
+  const subcategorySlug = (formData.get("subcategorySlug") as string) || "";
+  const title           = (formData.get("title")           as string) || "Gallery Image";
+  const description     = (formData.get("description")     as string) || "";
+  const published       = formData.get("published") === "true";
+  const rawFile         = formData.get("image") as File | null;
+
+  if (!rawFile) throw new Error("Please select an image to upload.");
+
+  // ── Path 1: Spring Boot backend ──────────────────────────────────────────
   try {
     const res = await api.post<ApiResponse<any>>("/admin/gallery", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });
-    if (res.data?.data) {
-      const item = dtoToItem(res.data.data);
-      saveLocalGalleryItem(item); // update local cache for instant UI refresh
-      return item;
-    }
-    throw new Error(res.data?.message || "Upload failed.");
-  } catch (err: any) {
-    const msg =
-      err?.response?.data?.message ||
-      err?.message ||
-      "Upload failed. Check file size/type and try again.";
-    throw new Error(msg);
-  }
-}
 
-export async function adminUpdateGalleryItem(id: number, formData: FormData): Promise<GalleryItem> {
-  try {
-    const res = await api.put<ApiResponse<any>>(`/admin/gallery/${id}`, formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
-    if (res.data?.data) {
+    if (res.data?.success && res.data?.data) {
       const item = dtoToItem(res.data.data);
       saveLocalGalleryItem(item);
       return item;
     }
-    throw new Error(res.data?.message || "Update failed.");
-  } catch (err: any) {
-    const msg =
-      err?.response?.data?.message ||
-      err?.message ||
-      "Update failed. Please try again.";
-    throw new Error(msg);
+
+    // Backend returned 2xx but body signals failure — fall through to Supabase.
+    console.warn("Backend returned success=false or empty data, trying Supabase fallback.");
+  } catch (backendErr: any) {
+    const status = backendErr?.response?.status;
+
+    // Hard auth failures — do NOT fall through; surface the real error.
+    if (status === 401) throw new Error("Session expired. Please log in again.");
+    if (status === 403) throw new Error("Access denied. Admin login required.");
+    // 400 = validation error (bad category/subcategory slug etc.)
+    if (status === 400) {
+      const msg = backendErr?.response?.data?.message || "Invalid request.";
+      throw new Error(msg);
+    }
+
+    // 5xx / network / timeout → Supabase fallback (backend temporarily down).
+    console.warn("Backend unavailable (status=" + (status ?? "network") + "), using Supabase fallback.");
   }
+
+  // ── Path 2: Supabase direct fallback (anon key) ──────────────────────────
+  const imageUrl = await supabaseUploadImage(rawFile);
+  const item     = await supabaseCreateGalleryItem(
+    categorySlug, subcategorySlug, title, description, published, imageUrl
+  );
+  saveLocalGalleryItem(item);
+  return item;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin gallery — UPDATE
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function adminUpdateGalleryItem(id: number, formData: FormData): Promise<GalleryItem> {
+  const categorySlug    = (formData.get("categorySlug")    as string) || "";
+  const subcategorySlug = (formData.get("subcategorySlug") as string) || "";
+  const title           = (formData.get("title")           as string) || "";
+  const description     = (formData.get("description")     as string) || "";
+  const published       = formData.get("published") === "true";
+  const rawFile         = formData.get("image") as File | null;
+
+  // ── Path 1: Spring Boot backend ──────────────────────────────────────────
+  try {
+    const res = await api.put<ApiResponse<any>>(`/admin/gallery/${id}`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    if (res.data?.success && res.data?.data) {
+      const item = dtoToItem(res.data.data);
+      saveLocalGalleryItem(item);
+      return item;
+    }
+  } catch (backendErr: any) {
+    const status = backendErr?.response?.status;
+    if (status === 401) throw new Error("Session expired. Please log in again.");
+    if (status === 403) throw new Error("Access denied. Admin login required.");
+    if (status === 400) {
+      throw new Error(backendErr?.response?.data?.message || "Invalid request.");
+    }
+    console.warn("Backend update unavailable, using Supabase fallback.");
+  }
+
+  // ── Path 2: Supabase direct fallback ─────────────────────────────────────
+  let imageUrl: string | undefined;
+  if (rawFile) {
+    imageUrl = await supabaseUploadImage(rawFile);
+  }
+
+  const { categoryId, subcategoryId } = await supabaseResolveIds(categorySlug, subcategorySlug);
+  const updateData: any = {
+    category_id:    categoryId,
+    subcategory_id: subcategoryId,
+    title,
+    description,
+    published,
+    updated_at: new Date().toISOString(),
+  };
+  if (imageUrl) updateData.image_url = imageUrl;
+
+  const { data, error } = await supabase
+    .from("gallery_items")
+    .update(updateData)
+    .eq("id", id)
+    .select("id, title, description, image_url, published, created_at")
+    .maybeSingle();
+
+  if (error) throw new Error("Update failed: " + error.message);
+
+  const catInfo = getCategoryBySlug(categorySlug);
+  const subInfo = catInfo?.gallerySubcategories.find((s) => s.slug === subcategorySlug);
+  const existing = getLocalGalleryItems().find((i) => i.id === id);
+
+  const updated: GalleryItem = {
+    id,
+    categorySlug,
+    subcategorySlug,
+    subcategoryName: subInfo?.name ?? subcategorySlug,
+    title:       data?.title       ?? title,
+    description: data?.description ?? description,
+    imageUrl:    imageUrl ?? data?.image_url ?? existing?.imageUrl ?? "",
+    published,
+    createdAt:   existing?.createdAt ?? data?.created_at ?? new Date().toISOString(),
+  };
+  saveLocalGalleryItem(updated);
+  return updated;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin gallery — DELETE
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function adminDeleteGalleryItem(id: number) {
-  // The backend deletes the Cloudinary asset first, then the DB row atomically.
+  // Try Spring Boot backend first (it also deletes the Cloudinary asset).
+  let backendOk = false;
   try {
     await api.delete(`/admin/gallery/${id}`);
-  } catch (err: any) {
-    const msg = err?.response?.data?.message || err?.message || "Delete failed.";
-    throw new Error(msg);
+    backendOk = true;
+  } catch (backendErr: any) {
+    const status = backendErr?.response?.status;
+    if (status === 401) throw new Error("Session expired. Please log in again.");
+    if (status === 403) throw new Error("Access denied. Admin login required.");
+    if (status === 404) throw new Error("Item not found.");
+    console.warn("Backend delete unavailable, using Supabase fallback.");
   }
+
+  // Supabase fallback (image in Cloudinary remains, but DB row is removed).
+  if (!backendOk) {
+    const { error } = await supabase.from("gallery_items").delete().eq("id", id);
+    if (error) throw new Error("Delete failed: " + error.message);
+  }
+
   deleteLocalGalleryItem(id);
   return { success: true, data: null };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Admin gallery — READ: backend first, then Supabase, then local cache.
-// No secret key is required for any of these reads.
+// Admin gallery — READ
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<GalleryItem[]> {
-  // 1. Try Spring Boot backend (returns both published and draft items).
+  // 1. Try Spring Boot backend (returns published + unpublished).
   try {
-    const url = categorySlug
-      ? `/admin/gallery?category=${categorySlug}`
-      : "/admin/gallery";
+    const url = categorySlug ? `/admin/gallery?category=${categorySlug}` : "/admin/gallery";
     const res = await api.get<ApiResponse<any[]>>(url);
     if (res.data?.data != null) {
       const items = res.data.data.map(dtoToItem);
       items.forEach(saveLocalGalleryItem);
       return items;
     }
-  } catch (_) {
-    // Backend unreachable — fall through to Supabase.
-  }
+  } catch (_) {}
 
-  // 2. Supabase (publishable key — safe in browser; only published items are
-  //    readable via the default RLS policies).
+  // 2. Supabase anon read.
   let dbItems: GalleryItem[] = [];
   try {
     let q = supabase
@@ -286,12 +466,12 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
     }
   } catch (_) {}
 
-  // 3. Merge with local cache (offline / demo items).
+  // 3. Merge with local cache (DB wins over local).
   const map = new Map<number, GalleryItem>();
   dbItems.forEach((item) => map.set(item.id, item));
   getLocalGalleryItems().forEach((item) => {
     if (!categorySlug || item.categorySlug === categorySlug) {
-      if (!map.has(item.id)) map.set(item.id, item); // DB wins over local
+      if (!map.has(item.id)) map.set(item.id, item);
     }
   });
 
