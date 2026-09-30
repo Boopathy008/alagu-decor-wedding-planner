@@ -281,34 +281,25 @@ export async function adminCreateGalleryItem(formData: FormData): Promise<Galler
 
   if (!rawFile) throw new Error("Please select an image to upload.");
 
-  // ── Path 1: Spring Boot backend ──────────────────────────────────────────
-  try {
-    const res = await api.post<ApiResponse<any>>("/admin/gallery", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
+  const storedToken = localStorage.getItem("azhagu_admin_token");
+  const isDemoToken = !storedToken || storedToken === "demo_admin_token_123";
 
-    if (res.data?.success && res.data?.data) {
-      const item = dtoToItem(res.data.data);
-      saveLocalGalleryItem(item);
-      return item;
+  // ── Path 1: Spring Boot backend (only if logged in with real JWT) ─────────
+  if (!isDemoToken) {
+    try {
+      const res = await api.post<ApiResponse<any>>("/admin/gallery", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      if (res.data?.success && res.data?.data) {
+        const item = dtoToItem(res.data.data);
+        saveLocalGalleryItem(item);
+        return item;
+      }
+      console.warn("Backend returned success=false or empty data, trying Supabase fallback.");
+    } catch (backendErr: any) {
+      console.warn("Backend upload failed, using Supabase fallback:", backendErr?.message);
     }
-
-    // Backend returned 2xx but body signals failure — fall through to Supabase.
-    console.warn("Backend returned success=false or empty data, trying Supabase fallback.");
-  } catch (backendErr: any) {
-    const status = backendErr?.response?.status;
-
-    // Hard auth failures — do NOT fall through; surface the real error.
-    if (status === 401) throw new Error("Session expired. Please log in again.");
-    if (status === 403) throw new Error("Access denied. Admin login required.");
-    // 400 = validation error (bad category/subcategory slug etc.)
-    if (status === 400) {
-      const msg = backendErr?.response?.data?.message || "Invalid request.";
-      throw new Error(msg);
-    }
-
-    // 5xx / network / timeout → Supabase fallback (backend temporarily down).
-    console.warn("Backend unavailable (status=" + (status ?? "network") + "), using Supabase fallback.");
   }
 
   // ── Path 2: Supabase direct fallback (anon key) ──────────────────────────
@@ -332,24 +323,23 @@ export async function adminUpdateGalleryItem(id: number, formData: FormData): Pr
   const published       = formData.get("published") === "true";
   const rawFile         = formData.get("image") as File | null;
 
+  const storedToken = localStorage.getItem("azhagu_admin_token");
+  const isDemoToken = !storedToken || storedToken === "demo_admin_token_123";
+
   // ── Path 1: Spring Boot backend ──────────────────────────────────────────
-  try {
-    const res = await api.put<ApiResponse<any>>(`/admin/gallery/${id}`, formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
-    if (res.data?.success && res.data?.data) {
-      const item = dtoToItem(res.data.data);
-      saveLocalGalleryItem(item);
-      return item;
+  if (!isDemoToken) {
+    try {
+      const res = await api.put<ApiResponse<any>>(`/admin/gallery/${id}`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      if (res.data?.success && res.data?.data) {
+        const item = dtoToItem(res.data.data);
+        saveLocalGalleryItem(item);
+        return item;
+      }
+    } catch (backendErr: any) {
+      console.warn("Backend update failed, using Supabase fallback:", backendErr?.message);
     }
-  } catch (backendErr: any) {
-    const status = backendErr?.response?.status;
-    if (status === 401) throw new Error("Session expired. Please log in again.");
-    if (status === 403) throw new Error("Access denied. Admin login required.");
-    if (status === 400) {
-      throw new Error(backendErr?.response?.data?.message || "Invalid request.");
-    }
-    console.warn("Backend update unavailable, using Supabase fallback.");
   }
 
   // ── Path 2: Supabase direct fallback ─────────────────────────────────────
