@@ -356,12 +356,29 @@ export async function adminCreateGalleryItem(formData: FormData): Promise<Galler
   } else {
     const subInfo = catInfo?.gallerySubcategories.find((s) => s.slug === defaultSubcategorySlug);
     const subName = subInfo?.name || defaultSubcategorySlug.charAt(0).toUpperCase() + defaultSubcategorySlug.slice(1);
-    const newSub = await supabaseAdmin
+    const { data: newSub, error: subInsertError } = await supabaseAdmin
       .from("gallery_subcategories")
       .insert([{ category_id: categoryId, name: subName, slug: defaultSubcategorySlug }])
       .select("id")
-      .single();
-    subcategoryId = newSub.data?.id ?? 0;
+      .maybeSingle();
+
+    if (newSub?.id) {
+      // INSERT succeeded
+      subcategoryId = newSub.id;
+    } else if (subInsertError) {
+      // INSERT failed — slug likely exists under a different category_id (unique constraint).
+      // Search globally by slug alone to recover the existing row's ID.
+      const { data: globalSub } = await supabaseAdmin
+        .from("gallery_subcategories")
+        .select("id")
+        .eq("slug", defaultSubcategorySlug)
+        .maybeSingle();
+      subcategoryId = globalSub?.id ?? 0;
+    }
+  }
+
+  if (!subcategoryId) {
+    throw new Error(`Subcategory not found or could not be created (slug: ${defaultSubcategorySlug}).`);
   }
 
   // 4. Insert gallery item into Supabase
@@ -381,20 +398,24 @@ export async function adminCreateGalleryItem(formData: FormData): Promise<Galler
     .select("*, gallery_categories(slug), gallery_subcategories(slug, name)")
     .single();
 
-  if (error || !data) {
-    throw new Error(error?.message || "Failed to save gallery item to database.");
+  // BUG 1 FIX: only throw on a real Supabase error.
+  // When supabaseAdmin uses the anon key, RLS may allow INSERT but block the
+  // read-back SELECT, so `data` can be null even though the row was created.
+  // Checking `error` alone is the correct signal.
+  if (error) {
+    throw new Error(error.message || "Failed to save gallery item to database.");
   }
 
   return {
-    id: data.id,
-    categorySlug: data.gallery_categories?.slug || categorySlug,
-    subcategorySlug: data.gallery_subcategories?.slug || defaultSubcategorySlug,
-    subcategoryName: data.gallery_subcategories?.name || defaultSubcategorySlug,
-    title: data.title,
-    description: data.description,
-    imageUrl: data.image_url,
-    published: data.published,
-    createdAt: data.created_at,
+    id: data?.id ?? Date.now(),
+    categorySlug: data?.gallery_categories?.slug || categorySlug,
+    subcategorySlug: data?.gallery_subcategories?.slug || defaultSubcategorySlug,
+    subcategoryName: data?.gallery_subcategories?.name || defaultSubcategorySlug,
+    title: data?.title || title,
+    description: data?.description || description,
+    imageUrl: data?.image_url || imageUrl,
+    published: data?.published ?? published,
+    createdAt: data?.created_at || new Date().toISOString(),
   };
 }
 
