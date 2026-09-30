@@ -7,6 +7,7 @@ export interface GalleryItem {
   description: string;
   imageUrl: string;
   published: boolean;
+  isFeatured?: boolean;
   createdAt: string;
 }
 

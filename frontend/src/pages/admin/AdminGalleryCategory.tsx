@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { getCategoryBySlug } from "@/config/services";
-import { adminDeleteGalleryItem, adminFetchAllGalleryItems } from "@/services/api";
+import {
+  adminDeleteGalleryItem,
+  adminFetchAllGalleryItems,
+  adminSetFeaturedGalleryItem,
+} from "@/services/api";
 import type { GalleryItem } from "@/types";
 
 export default function AdminGalleryCategory() {
@@ -12,6 +16,7 @@ export default function AdminGalleryCategory() {
   const [confirmId, setConfirmId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deletingLong, setDeletingLong] = useState(false);
+  const [settingFeaturedId, setSettingFeaturedId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!category) return;
@@ -24,6 +29,17 @@ export default function AdminGalleryCategory() {
     adminFetchAllGalleryItems(category.slug)
       .then(setItems)
       .finally(() => setLoading(false));
+  }
+
+  async function handleSetFeatured(id: number) {
+    if (!category) return;
+    setSettingFeaturedId(id);
+    try {
+      const updated = await adminSetFeaturedGalleryItem(id, category.slug);
+      setItems(updated);
+    } finally {
+      setSettingFeaturedId(null);
+    }
   }
 
   async function handleDelete(id: number) {
@@ -76,18 +92,40 @@ export default function AdminGalleryCategory() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                   {subItems.map((item) => (
                     <div key={item.id} className="bg-white border border-charcoal/10 group relative">
-                      <img
-                        src={item.imageUrl}
-                        alt={item.title}
-                        className="w-full h-32 object-cover"
-                      />
+                      <div className="relative">
+                        <img
+                          src={item.imageUrl}
+                          alt={item.title}
+                          className="w-full h-32 object-cover"
+                        />
+                        {item.isFeatured && (
+                          <span className="absolute top-2 left-2 bg-amber-500 text-white text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 shadow-md flex items-center gap-1">
+                            ★ COVER
+                          </span>
+                        )}
+                      </div>
                       <div className="p-3">
                         <p className="text-sm font-medium truncate">{item.title}</p>
-                        <p className="text-xs text-charcoal/40">
-                          {item.published ? "Published" : "Unpublished"}
-                        </p>
+                        <div className="flex items-center justify-between text-xs text-charcoal/40 mt-1">
+                          <span>{item.published ? "Published" : "Unpublished"}</span>
+                          {item.isFeatured && (
+                            <span className="text-amber-600 font-semibold text-[10px]">
+                              Front Page Cover
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                        <button
+                          onClick={() => handleSetFeatured(item.id)}
+                          disabled={settingFeaturedId === item.id}
+                          className={`${
+                            item.isFeatured ? "bg-amber-500" : "bg-accent"
+                          } text-ivory text-[10px] uppercase tracking-widest2 px-2 py-1 hover:opacity-90 transition-opacity`}
+                          title="Set as front page cover for this section"
+                        >
+                          {settingFeaturedId === item.id ? "..." : item.isFeatured ? "★ COVER" : "SET COVER"}
+                        </button>
                         <Link
                           to={`/admin/gallery/edit/${item.id}`}
                           className="bg-charcoal text-ivory text-[10px] uppercase tracking-widest2 px-2 py-1"

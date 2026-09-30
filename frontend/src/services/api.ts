@@ -204,14 +204,20 @@ export async function fetchFeaturedGallery(): Promise<GalleryItem[]> {
   const featured: GalleryItem[] = [];
 
   serviceCategories.forEach((c) => {
-    const firstSubSlug = c.gallerySubcategories[0]?.slug;
-
-    // 1. Prefer the latest published image from the category's FIRST subcategory
+    // 1. Highest priority: Manually chosen Front Page Cover image for this category
     let match = all.find(
-      (item) => item.categorySlug === c.slug && item.subcategorySlug === firstSubSlug && item.published
+      (item) => item.categorySlug === c.slug && item.published && item.isFeatured
     );
 
-    // 2. Fallback to the latest published image in the category if first subcategory has no uploads yet
+    // 2. Second priority: Latest published image from the category's FIRST subcategory
+    if (!match) {
+      const firstSubSlug = c.gallerySubcategories[0]?.slug;
+      match = all.find(
+        (item) => item.categorySlug === c.slug && item.subcategorySlug === firstSubSlug && item.published
+      );
+    }
+
+    // 3. Fallback: Latest published image in the category if first subcategory has no uploads yet
     if (!match) {
       match = all.find((item) => item.categorySlug === c.slug && item.published);
     }
@@ -461,6 +467,7 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
         description:     item.description ?? "",
         imageUrl:        item.image_url,
         published:       item.published,
+        isFeatured:      Boolean(item.cloudinary_public_id?.includes("featured_cover")),
         createdAt:       item.created_at,
       }));
 
@@ -472,6 +479,37 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
   // 2. Local cache fallback
   const cached = getLocalGalleryItems();
   return categorySlug ? cached.filter((i) => i.categorySlug === categorySlug) : cached;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin gallery — SET FEATURED FRONT PAGE COVER
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function adminSetFeaturedGalleryItem(id: number, categorySlug: string): Promise<GalleryItem[]> {
+  try {
+    // 1. Get all item IDs belonging to this category
+    const { data: categoryItems } = await supabase
+      .from("gallery_items")
+      .select("id, gallery_categories!inner(slug)")
+      .eq("gallery_categories.slug", categorySlug);
+
+    if (categoryItems && categoryItems.length > 0) {
+      const itemIds = categoryItems.map((d: any) => d.id);
+      // Unset featured_cover on all existing items in this category
+      await supabase
+        .from("gallery_items")
+        .update({ cloudinary_public_id: "" })
+        .in("id", itemIds);
+    }
+
+    // 2. Set featured_cover on target item
+    await supabase
+      .from("gallery_items")
+      .update({ cloudinary_public_id: "featured_cover" })
+      .eq("id", id);
+  } catch (_) {}
+
+  return adminFetchAllGalleryItems(categorySlug);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
