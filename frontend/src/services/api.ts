@@ -94,6 +94,15 @@ async function supabaseUploadImage(rawFile: File): Promise<string> {
 
   if (error) throw new Error("Storage upload failed: " + error.message);
 
+  // Generate long-lived (10 year) signed URL so images in private bucket render publicly
+  const { data: signedData, error: signedErr } = await supabase.storage
+    .from("gallery-images")
+    .createSignedUrl(path, 60 * 60 * 24 * 365 * 10);
+
+  if (!signedErr && signedData?.signedUrl) {
+    return signedData.signedUrl;
+  }
+
   const { data: urlData } = supabase.storage.from("gallery-images").getPublicUrl(path);
   if (!urlData?.publicUrl) throw new Error("Could not get public URL for uploaded image.");
   return urlData.publicUrl;
