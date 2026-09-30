@@ -342,7 +342,7 @@ export async function adminCreateGalleryItem(formData: FormData): Promise<Galler
     categoryId = newCat.data?.id ?? 0;
   }
 
-  // 3. Fetch subcategory_id from Supabase (scoped strictly to categoryId)
+  // 3. Fetch subcategory_id from Supabase — always scoped to (category_id, slug)
   let subcategoryId = 0;
   const subQuery = await supabaseAdmin
     .from("gallery_subcategories")
@@ -352,8 +352,10 @@ export async function adminCreateGalleryItem(formData: FormData): Promise<Galler
     .maybeSingle();
 
   if (subQuery.data?.id) {
+    // Happy path: subcategory already exists in DB
     subcategoryId = subQuery.data.id;
   } else {
+    // Not found — create it now
     const subInfo = catInfo?.gallerySubcategories.find((s) => s.slug === defaultSubcategorySlug);
     const subName = subInfo?.name || defaultSubcategorySlug.charAt(0).toUpperCase() + defaultSubcategorySlug.slice(1);
     const { data: newSub, error: subInsertError } = await supabaseAdmin
@@ -363,25 +365,20 @@ export async function adminCreateGalleryItem(formData: FormData): Promise<Galler
       .maybeSingle();
 
     if (newSub?.id) {
-      // INSERT succeeded
       subcategoryId = newSub.id;
-    } else if (subInsertError) {
-      // INSERT failed — slug likely exists under a different category_id (unique constraint).
-      // Search globally by slug alone to recover the existing row's ID.
-      const { data: globalSub } = await supabaseAdmin
-        .from("gallery_subcategories")
-        .select("id")
-        .eq("slug", defaultSubcategorySlug)
-        .maybeSingle();
-      subcategoryId = globalSub?.id ?? 0;
+    } else {
+      // Throw the REAL database error — never silently continue with id=0
+      const dbMsg = subInsertError
+        ? `DB error (code ${subInsertError.code}): ${subInsertError.message}`
+        : `Subcategory slug "${defaultSubcategorySlug}" not found and could not be created.`;
+      throw new Error(dbMsg);
     }
   }
 
-  if (!subcategoryId) {
-    throw new Error(`Subcategory not found or could not be created (slug: ${defaultSubcategorySlug}).`);
-  }
-
   // 4. Insert gallery item into Supabase
+  // Use maybeSingle() instead of single() — when supabaseAdmin uses the anon
+  // key, RLS may allow INSERT but block the read-back SELECT, returning
+  // data=null with error=null. We treat error=null as success regardless.
   const { data, error } = await supabaseAdmin
     .from("gallery_items")
     .insert([{
@@ -396,7 +393,7 @@ export async function adminCreateGalleryItem(formData: FormData): Promise<Galler
       updated_at: new Date().toISOString(),
     }])
     .select("*, gallery_categories(slug), gallery_subcategories(slug, name)")
-    .single();
+    .maybeSingle();
 
   // BUG 1 FIX: only throw on a real Supabase error.
   // When supabaseAdmin uses the anon key, RLS may allow INSERT but block the
