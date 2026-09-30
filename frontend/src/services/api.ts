@@ -8,15 +8,15 @@ import type {
   GalleryItem,
 } from "@/types";
 
-// 2 s timeout – if the backend is sleeping on a free tier it falls back
-// to local mock data almost instantly instead of hanging for ~30 s.
-export const api = axios.create({ baseURL: site.apiBaseUrl, timeout: 2000 });
+// ─────────────────────────────────────────────────────────────────────────────
+// Axios instance — all requests carry the admin JWT stored after login.
+// Upload timeout is 60 s so large images don't time-out on Cloudinary.
+// ─────────────────────────────────────────────────────────────────────────────
+export const api = axios.create({ baseURL: site.apiBaseUrl, timeout: 60000 });
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("azhagu_admin_token");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+  if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
@@ -30,56 +30,59 @@ api.interceptors.response.use(
   }
 );
 
-import { serviceCategories, getCategoryBySlug } from "@/config/services";
+import { serviceCategories } from "@/config/services";
+// Only the publishable (read-only) Supabase client is imported here.
+// The secret/service-role key must NEVER be used from the browser.
+import { supabase } from "./supabaseClient";
 
-const DECORATION_IMAGES = [
-  "/decoration1.jpg",
-  "/decoration2.jpg",
-  "/decoration3.jpg",
-  "/decoration4.jpg",
-  "/decoration5.jpg",
-  "/decoration6.jpg",
-  "/decoration7.jpg",
-  "/decoration8.jpg",
-  "/decoration9.jpg",
-  "/decoration10.jpg",
-  "/decoration11.jpg",
-  "/decoration12.jpg",
-  "/decoration13.jpg",
-  "/decoration14.jpg",
-  "/decoration15.jpg",
-  "/decoration16.jpg",
-  "/decoration17.jpg",
-  "/decoration18.jpg",
-];
+// ─────────────────────────────────────────────────────────────────────────────
+// Local-storage helpers  — used as a READ fallback, never for writes.
+// ─────────────────────────────────────────────────────────────────────────────
+const GALLERY_LOCAL_KEY  = "azhagu_custom_gallery_items";
+const ENQUIRIES_LOCAL_KEY = "azhagu_demo_enquiries";
 
-const EVENT_IMAGES = [
-  "/event1.jpg",
-  "/event2.jpg",
-  "/event3.jpg",
-  "/event4.jpg",
-  "/event5.jpg",
-  "/event6.jpg",
-  "/event7.jpg",
-  "/event8.jpg",
-  "/event9.jpg",
-];
-
-const CATERING_IMAGES = ["/catering1.jpg", "/demo1.jpg"];
-const ENTERTAINMENT_IMAGES = ["/entertainment1.jpg", "/demo.jpg"];
-const GIFT_IMAGES = ["/gift1.jpg", "/demo1.jpg"];
-const ENTRIES_IMAGES = ["/entries1.jpg", "/event1.jpg"];
-const PHOTOGRAPHY_IMAGES = ["/photography1.jpg", "/event2.jpg"];
-
-function getMockGalleryItems(categorySlug?: string, subcategorySlug?: string): GalleryItem[] {
-  return [];
+function getLocalGalleryItems(): GalleryItem[] {
+  try { return JSON.parse(localStorage.getItem(GALLERY_LOCAL_KEY) || "[]"); }
+  catch { return []; }
+}
+function saveLocalGalleryItem(item: GalleryItem) {
+  const list = [item, ...getLocalGalleryItems().filter((i) => i.id !== item.id)];
+  localStorage.setItem(GALLERY_LOCAL_KEY, JSON.stringify(list));
+}
+function deleteLocalGalleryItem(id: number) {
+  localStorage.setItem(
+    GALLERY_LOCAL_KEY,
+    JSON.stringify(getLocalGalleryItems().filter((i) => i.id !== id))
+  );
+}
+function getLocalEnquiries(): EnquiryRecord[] {
+  try { return JSON.parse(localStorage.getItem(ENQUIRIES_LOCAL_KEY) || "[]"); }
+  catch { return []; }
 }
 
-import { supabase, supabaseAdmin } from "./supabaseClient";
+/**
+ * Map a Spring Boot GalleryItemDto response (camelCase JSON) to the
+ * frontend GalleryItem type.
+ */
+function dtoToItem(dto: any): GalleryItem {
+  return {
+    id:              dto.id,
+    categorySlug:    dto.categorySlug,
+    subcategorySlug: dto.subcategorySlug,
+    subcategoryName: dto.subcategoryName,
+    title:           dto.title,
+    description:     dto.description ?? "",
+    imageUrl:        dto.imageUrl,
+    published:       dto.published,
+    createdAt:       dto.createdAt,
+  };
+}
 
-// ---------- Public gallery ----------
+// ─────────────────────────────────────────────────────────────────────────────
+// Public gallery reads — Supabase publishable key (safe in browser).
+// ─────────────────────────────────────────────────────────────────────────────
 
-export async function fetchGalleryByCategory(categorySlug: string) {
+export async function fetchGalleryByCategory(categorySlug: string): Promise<GalleryItem[]> {
   const all = await adminFetchAllGalleryItems(categorySlug);
   return all.filter((item) => item.published);
 }
@@ -87,14 +90,12 @@ export async function fetchGalleryByCategory(categorySlug: string) {
 export async function fetchGalleryByCategoryAndSubcategory(
   categorySlug: string,
   subcategorySlug: string
-) {
+): Promise<GalleryItem[]> {
   const all = await adminFetchAllGalleryItems(categorySlug);
-  return all.filter(
-    (item) => item.published && item.subcategorySlug === subcategorySlug
-  );
+  return all.filter((item) => item.published && item.subcategorySlug === subcategorySlug);
 }
 
-export async function fetchFeaturedGallery() {
+export async function fetchFeaturedGallery(): Promise<GalleryItem[]> {
   const all = await adminFetchAllGalleryItems();
   const featured: GalleryItem[] = [];
   serviceCategories.forEach((c) => {
@@ -104,453 +105,220 @@ export async function fetchFeaturedGallery() {
   return featured;
 }
 
-const ENQUIRIES_STORAGE_KEY = "azhagu_demo_enquiries";
-
-function getLocalEnquiries(): EnquiryRecord[] {
-  try {
-    const raw = localStorage.getItem(ENQUIRIES_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Enquiries
+// ─────────────────────────────────────────────────────────────────────────────
 
 export async function submitEnquiry(values: EnquiryFormValues) {
+  // Try Supabase (publishable key — safe in browser).
   try {
-    await supabase.from("enquiries").insert([
-      {
-        name: values.name,
-        phone: values.phone,
-        email: values.email || null,
-        event_type: values.eventType || null,
-        event_date: values.eventDate || null,
-        location: values.location || null,
-        guest_count: values.guestCount || null,
-        message: values.message || null,
-        status: "NEW",
-        created_at: new Date().toISOString(),
-      },
-    ]);
-  } catch (e) {}
+    await supabase.from("enquiries").insert([{
+      name: values.name, phone: values.phone,
+      email: values.email || null, event_type: values.eventType || null,
+      event_date: values.eventDate || null, location: values.location || null,
+      guest_count: values.guestCount || null, message: values.message || null,
+      status: "NEW", created_at: new Date().toISOString(),
+    }]);
+  } catch (_) {}
 
+  // Try Spring Boot backend as well.
   try {
     const res = await api.post<ApiResponse<null>>("/enquiries", values);
     return res.data;
-  } catch (e) {
-    const current = getLocalEnquiries();
-    const newEnquiry: EnquiryRecord = {
-      id: Date.now(),
-      ...values,
-      status: "NEW",
-      createdAt: new Date().toISOString(),
+  } catch (_) {
+    // Local demo fallback.
+    const item: EnquiryRecord = {
+      id: Date.now(), ...values,
+      status: "NEW", createdAt: new Date().toISOString(),
     };
-    localStorage.setItem(ENQUIRIES_STORAGE_KEY, JSON.stringify([newEnquiry, ...current]));
+    localStorage.setItem(
+      ENQUIRIES_LOCAL_KEY,
+      JSON.stringify([item, ...getLocalEnquiries()])
+    );
     return { success: true, data: null };
   }
 }
 
-// ---------- Admin auth ----------
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin authentication
+// ─────────────────────────────────────────────────────────────────────────────
 
 export async function adminLogin(email: string, password: string) {
-  const cleanEmail = email.trim().toLowerCase();
-  const cleanPassword = password.trim();
-
-  const isDefaultCredentials =
-    (cleanEmail === "admin@azhagu.com" && (cleanPassword === "AzhaguDecor#Admin2026" || cleanPassword === "admin" || cleanPassword === "admin123")) ||
-    (cleanEmail === "admin" && (cleanPassword === "admin" || cleanPassword === "admin123" || cleanPassword === "AzhaguDecor#Admin2026"));
-
-  if (isDefaultCredentials) {
-    return {
-      token: "demo_admin_token_123",
-      email: "admin@azhagu.com",
-      role: "ADMIN",
-    };
-  }
-
+  // Always try the real backend first so the returned JWT is accepted by the
+  // /api/admin/* write endpoints.
   try {
     const res = await api.post<ApiResponse<{ token: string; email: string; role: string }>>(
       "/auth/login",
-      { email, password }
+      { email: email.trim().toLowerCase(), password: password.trim() }
     );
     if (res.data.data) return res.data.data;
-  } catch (e) {}
+  } catch (err: any) {
+    // A 401 means the credentials are wrong — do not fall through.
+    if (err?.response?.status === 401) throw new Error("Invalid email or password.");
+    // Any other error (network, free-tier cold start) — fall through to demo mode.
+  }
+
+  // Demo / offline fallback — only active when the backend is unreachable.
+  const e = email.trim().toLowerCase();
+  const p = password.trim();
+  const demo =
+    (e === "admin@azhagu.com" || e === "admin") &&
+    (p === "AzhaguDecor#Admin2026" || p === "admin" || p === "admin123");
+
+  if (demo) return { token: "demo_admin_token_123", email: "admin@azhagu.com", role: "ADMIN" };
 
   throw new Error("Invalid email or password.");
 }
 
-// ---------- Admin gallery management ----------
-
-// ---- Local storage fallback helpers for gallery items ----
-const MOCK_GALLERY_STORAGE_KEY = "azhagu_custom_gallery_items";
-
-function getLocalGalleryItems(): GalleryItem[] {
-  try {
-    const raw = localStorage.getItem(MOCK_GALLERY_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveLocalGalleryItem(item: GalleryItem) {
-  const current = getLocalGalleryItems();
-  const updated = [item, ...current.filter((i) => i.id !== item.id)];
-  localStorage.setItem(MOCK_GALLERY_STORAGE_KEY, JSON.stringify(updated));
-}
-
-function deleteLocalGalleryItem(id: number) {
-  const current = getLocalGalleryItems();
-  localStorage.setItem(MOCK_GALLERY_STORAGE_KEY, JSON.stringify(current.filter((i) => i.id !== id)));
-}
-
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-async function compressImageFile(file: File): Promise<File> {
-  if (!file || !file.type.startsWith("image/")) return file;
-  return new Promise((resolve) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const canvas = document.createElement("canvas");
-      let { width, height } = img;
-      const maxDim = 1200;
-      if (width > maxDim || height > maxDim) {
-        if (width > height) {
-          height = Math.round((height * maxDim) / width);
-          width = maxDim;
-        } else {
-          width = Math.round((width * maxDim) / height);
-          height = maxDim;
-        }
-      }
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return resolve(file);
-      ctx.drawImage(img, 0, 0, width, height);
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) return resolve(file);
-          const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, ".jpg"), {
-            type: "image/jpeg",
-          });
-          resolve(compressedFile);
-        },
-        "image/jpeg",
-        0.82
-      );
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      resolve(file);
-    };
-    img.src = url;
-  });
-}
-
-// ---- Helper: upload image file to Supabase Storage and return public URL ----
-async function uploadImageToStorage(rawFile: File): Promise<string> {
-  const file = await compressImageFile(rawFile);
-  try {
-    const ext = "jpg";
-    const fileName = `gallery/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-
-    const uploadPromise = supabaseAdmin.storage
-      .from("gallery-images")
-      .upload(fileName, file, { cacheControl: "3600", upsert: true, contentType: file.type });
-
-    const timeoutPromise = new Promise<{ error: any }>((resolve) =>
-      setTimeout(() => resolve({ error: new Error("Storage upload timeout after 5s") }), 5000)
-    );
-
-    const { error: uploadError } = await Promise.race([uploadPromise, timeoutPromise]);
-
-    if (!uploadError) {
-      const { data: urlData } = supabaseAdmin.storage
-        .from("gallery-images")
-        .getPublicUrl(fileName);
-
-      if (urlData?.publicUrl) return urlData.publicUrl;
-    }
-    console.warn("Storage upload warning, using data URL fallback:", uploadError);
-  } catch (err) {
-    console.warn("Storage upload error, using data URL fallback:", err);
-  }
-
-  // Fallback: convert file to data URL so upload NEVER fails
-  return await fileToDataUrl(file);
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin gallery — WRITE operations go exclusively through the Spring Boot
+// backend at /api/admin/gallery.
+//
+// The backend's GalleryService + CloudinaryService handle:
+//   • Cloudinary upload (server-side; credentials never reach the browser)
+//   • @Transactional DB insert — no orphaned storage files on DB failure
+//   • Subcategory lookup by (category_id, slug) — works correctly for
+//     Decorations→wedding AND Photography→wedding because they are different
+//     rows in gallery_subcategories identified by (category_id, slug)
+//   • Correct error messages forwarded to the frontend
+//
+// The frontend does NOT use supabaseAdmin (secret key) for any write at all.
+// ─────────────────────────────────────────────────────────────────────────────
 
 export async function adminCreateGalleryItem(formData: FormData): Promise<GalleryItem> {
-  const categorySlug = (formData.get("categorySlug") as string) || "decorations";
-  const subcategorySlug = (formData.get("subcategorySlug") as string) || "";
-  const title = (formData.get("title") as string) || "Gallery Image";
-  const description = (formData.get("description") as string) || "";
-  const published = formData.get("published") === "true";
-  const rawFile = formData.get("image") as File | null;
-
-  if (!rawFile) throw new Error("Please select an image to upload.");
-
-  const catInfo = getCategoryBySlug(categorySlug);
-  const defaultSubcategorySlug = subcategorySlug || catInfo?.gallerySubcategories[0]?.slug || categorySlug;
-
-  // 1. Upload image to Supabase storage
-  const ext = rawFile.name.split(".").pop() || "jpg";
-  const fileName = `gallery/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-
-  const { error: uploadError } = await supabaseAdmin.storage
-    .from("gallery-images")
-    .upload(fileName, rawFile, { cacheControl: "3600", upsert: true, contentType: rawFile.type });
-
-  let imageUrl = "";
-  if (!uploadError) {
-    const { data: urlData } = supabaseAdmin.storage
-      .from("gallery-images")
-      .getPublicUrl(fileName);
-    if (urlData?.publicUrl) imageUrl = urlData.publicUrl;
-  }
-
-  if (!imageUrl) {
-    throw new Error("Upload failed. Check file size/type and try again.");
-  }
-
-  // 2. Fetch category_id from Supabase
-  let categoryId = 0;
-  const catQuery = await supabaseAdmin
-    .from("gallery_categories")
-    .select("id")
-    .eq("slug", categorySlug)
-    .maybeSingle();
-
-  if (catQuery.data?.id) {
-    categoryId = catQuery.data.id;
-  } else {
-    const catName = catInfo?.name || categorySlug.charAt(0).toUpperCase() + categorySlug.slice(1);
-    const newCat = await supabaseAdmin
-      .from("gallery_categories")
-      .insert([{ name: catName, slug: categorySlug }])
-      .select("id")
-      .single();
-    categoryId = newCat.data?.id ?? 0;
-  }
-
-  // 3. Fetch subcategory_id from Supabase — always scoped to (category_id, slug)
-  let subcategoryId = 0;
-  const subQuery = await supabaseAdmin
-    .from("gallery_subcategories")
-    .select("id")
-    .eq("category_id", categoryId)
-    .eq("slug", defaultSubcategorySlug)
-    .maybeSingle();
-
-  if (subQuery.data?.id) {
-    // Happy path: subcategory already exists in DB
-    subcategoryId = subQuery.data.id;
-  } else {
-    // Not found — create it now
-    const subInfo = catInfo?.gallerySubcategories.find((s) => s.slug === defaultSubcategorySlug);
-    const subName = subInfo?.name || defaultSubcategorySlug.charAt(0).toUpperCase() + defaultSubcategorySlug.slice(1);
-    const { data: newSub, error: subInsertError } = await supabaseAdmin
-      .from("gallery_subcategories")
-      .insert([{ category_id: categoryId, name: subName, slug: defaultSubcategorySlug }])
-      .select("id")
-      .maybeSingle();
-
-    if (newSub?.id) {
-      subcategoryId = newSub.id;
-    } else {
-      // Throw the REAL database error — never silently continue with id=0
-      const dbMsg = subInsertError
-        ? `DB error (code ${subInsertError.code}): ${subInsertError.message}`
-        : `Subcategory slug "${defaultSubcategorySlug}" not found and could not be created.`;
-      throw new Error(dbMsg);
+  // FormData already contains: categorySlug, subcategorySlug, title,
+  // description, published, image (File).
+  try {
+    const res = await api.post<ApiResponse<any>>("/admin/gallery", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    if (res.data?.data) {
+      const item = dtoToItem(res.data.data);
+      saveLocalGalleryItem(item); // update local cache for instant UI refresh
+      return item;
     }
+    throw new Error(res.data?.message || "Upload failed.");
+  } catch (err: any) {
+    const msg =
+      err?.response?.data?.message ||
+      err?.message ||
+      "Upload failed. Check file size/type and try again.";
+    throw new Error(msg);
   }
-
-  // 4. Insert gallery item into Supabase
-  // Use maybeSingle() instead of single() — when supabaseAdmin uses the anon
-  // key, RLS may allow INSERT but block the read-back SELECT, returning
-  // data=null with error=null. We treat error=null as success regardless.
-  const { data, error } = await supabaseAdmin
-    .from("gallery_items")
-    .insert([{
-      category_id: categoryId,
-      subcategory_id: subcategoryId,
-      title,
-      description,
-      image_url: imageUrl,
-      cloudinary_public_id: imageUrl.slice(0, 50),
-      published,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }])
-    .select("*, gallery_categories(slug), gallery_subcategories(slug, name)")
-    .maybeSingle();
-
-  // BUG 1 FIX: only throw on a real Supabase error.
-  // When supabaseAdmin uses the anon key, RLS may allow INSERT but block the
-  // read-back SELECT, so `data` can be null even though the row was created.
-  // Checking `error` alone is the correct signal.
-  if (error) {
-    throw new Error(error.message || "Failed to save gallery item to database.");
-  }
-
-  return {
-    id: data?.id ?? Date.now(),
-    categorySlug: data?.gallery_categories?.slug || categorySlug,
-    subcategorySlug: data?.gallery_subcategories?.slug || defaultSubcategorySlug,
-    subcategoryName: data?.gallery_subcategories?.name || defaultSubcategorySlug,
-    title: data?.title || title,
-    description: data?.description || description,
-    imageUrl: data?.image_url || imageUrl,
-    published: data?.published ?? published,
-    createdAt: data?.created_at || new Date().toISOString(),
-  };
 }
 
 export async function adminUpdateGalleryItem(id: number, formData: FormData): Promise<GalleryItem> {
-  const categorySlug = (formData.get("categorySlug") as string) || "";
-  const subcategorySlug = (formData.get("subcategorySlug") as string) || "";
-  const title = (formData.get("title") as string) || "";
-  const description = (formData.get("description") as string) || "";
-  const published = formData.get("published") === "true";
-  const rawFile = formData.get("image") as File | null;
-
-  let imageUrl: string | undefined;
-  if (rawFile) {
-    try {
-      const compressed = await compressImageFile(rawFile);
-      imageUrl = await uploadImageToStorage(compressed);
-    } catch (_) {
-      try { imageUrl = await fileToDataUrl(rawFile); } catch (__) {}
-    }
-  }
-
   try {
-    const updateData: any = { title, description, published, updated_at: new Date().toISOString() };
-    if (imageUrl) updateData.image_url = imageUrl;
-
-    const { data, error } = await supabaseAdmin
-      .from("gallery_items")
-      .update(updateData)
-      .eq("id", id)
-      .select("*, gallery_categories(slug), gallery_subcategories(slug, name)")
-      .maybeSingle();
-
-    if (!error && data) {
-      const updatedItem: GalleryItem = {
-        id: data.id,
-        categorySlug: data.gallery_categories?.slug || categorySlug,
-        subcategorySlug: data.gallery_subcategories?.slug || subcategorySlug,
-        subcategoryName: data.gallery_subcategories?.name || subcategorySlug,
-        title: data.title,
-        description: data.description,
-        imageUrl: data.image_url,
-        published: data.published,
-        createdAt: data.created_at,
-      };
-      saveLocalGalleryItem(updatedItem);
-      return updatedItem;
+    const res = await api.put<ApiResponse<any>>(`/admin/gallery/${id}`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    if (res.data?.data) {
+      const item = dtoToItem(res.data.data);
+      saveLocalGalleryItem(item);
+      return item;
     }
-  } catch (e) {
-    console.warn("Supabase update warning:", e);
+    throw new Error(res.data?.message || "Update failed.");
+  } catch (err: any) {
+    const msg =
+      err?.response?.data?.message ||
+      err?.message ||
+      "Update failed. Please try again.";
+    throw new Error(msg);
   }
-
-  const existingLocal = getLocalGalleryItems().find((i) => i.id === id);
-  const updatedLocal: GalleryItem = {
-    id,
-    categorySlug: categorySlug || existingLocal?.categorySlug || "decorations",
-    subcategorySlug: subcategorySlug || existingLocal?.subcategorySlug || "",
-    subcategoryName: subcategorySlug || existingLocal?.subcategoryName || "",
-    title: title || existingLocal?.title || "Gallery Image",
-    description: description || existingLocal?.description || "",
-    imageUrl: imageUrl || existingLocal?.imageUrl || "",
-    published,
-    createdAt: existingLocal?.createdAt || new Date().toISOString(),
-  };
-  saveLocalGalleryItem(updatedLocal);
-  return updatedLocal;
 }
 
 export async function adminDeleteGalleryItem(id: number) {
+  // The backend deletes the Cloudinary asset first, then the DB row atomically.
   try {
-    await supabaseAdmin.from("gallery_items").delete().eq("id", id);
-  } catch (e) {}
+    await api.delete(`/admin/gallery/${id}`);
+  } catch (err: any) {
+    const msg = err?.response?.data?.message || err?.message || "Delete failed.";
+    throw new Error(msg);
+  }
   deleteLocalGalleryItem(id);
   return { success: true, data: null };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin gallery — READ: backend first, then Supabase, then local cache.
+// No secret key is required for any of these reads.
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<GalleryItem[]> {
+  // 1. Try Spring Boot backend (returns both published and draft items).
+  try {
+    const url = categorySlug
+      ? `/admin/gallery?category=${categorySlug}`
+      : "/admin/gallery";
+    const res = await api.get<ApiResponse<any[]>>(url);
+    if (res.data?.data != null) {
+      const items = res.data.data.map(dtoToItem);
+      items.forEach(saveLocalGalleryItem);
+      return items;
+    }
+  } catch (_) {
+    // Backend unreachable — fall through to Supabase.
+  }
+
+  // 2. Supabase (publishable key — safe in browser; only published items are
+  //    readable via the default RLS policies).
   let dbItems: GalleryItem[] = [];
   try {
-    let query = supabase
+    let q = supabase
       .from("gallery_items")
       .select("*, gallery_categories!inner(slug), gallery_subcategories!inner(slug, name)")
       .order("created_at", { ascending: false });
+    if (categorySlug) q = q.eq("gallery_categories.slug", categorySlug);
 
-    if (categorySlug) {
-      query = query.eq("gallery_categories.slug", categorySlug);
-    }
-    const { data, error } = await query;
+    const { data, error } = await q;
     if (!error && data) {
       dbItems = data.map((item: any) => ({
-        id: item.id,
-        categorySlug: item.gallery_categories?.slug || categorySlug || "decorations",
+        id:              item.id,
+        categorySlug:    item.gallery_categories?.slug || categorySlug || "",
         subcategorySlug: item.gallery_subcategories?.slug || "",
         subcategoryName: item.gallery_subcategories?.name || "",
-        title: item.title,
-        description: item.description,
-        imageUrl: item.image_url,
-        published: item.published,
-        createdAt: item.created_at,
+        title:           item.title,
+        description:     item.description ?? "",
+        imageUrl:        item.image_url,
+        published:       item.published,
+        createdAt:       item.created_at,
       }));
     }
-  } catch (e) {
-    console.error("adminFetchAllGalleryItems error:", e);
-  }
+  } catch (_) {}
 
-  const localItems = getLocalGalleryItems();
-  const mergedMap = new Map<number, GalleryItem>();
-
-  dbItems.forEach((item) => mergedMap.set(item.id, item));
-  localItems.forEach((item) => {
+  // 3. Merge with local cache (offline / demo items).
+  const map = new Map<number, GalleryItem>();
+  dbItems.forEach((item) => map.set(item.id, item));
+  getLocalGalleryItems().forEach((item) => {
     if (!categorySlug || item.categorySlug === categorySlug) {
-      mergedMap.set(item.id, item);
+      if (!map.has(item.id)) map.set(item.id, item); // DB wins over local
     }
   });
 
-  return Array.from(mergedMap.values()).sort(
+  return Array.from(map.values()).sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 }
 
-
-
-
-
-// ---------- Admin enquiries ----------
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin enquiries
+// ─────────────────────────────────────────────────────────────────────────────
 
 export async function adminFetchEnquiries() {
   try {
     const res = await api.get<ApiResponse<EnquiryRecord[]>>("/admin/enquiries");
-    if (res.data.data && res.data.data.length > 0) return res.data.data;
-  } catch (e) {
-    // Demo fallback: read from localStorage
-  }
+    if (res.data?.data && res.data.data.length > 0) return res.data.data;
+  } catch (_) {}
   return getLocalEnquiries();
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin dashboard
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function adminFetchDashboard(): Promise<DashboardStats> {
   const allGalleryItems = await adminFetchAllGalleryItems();
-  const localEnquiries = await adminFetchEnquiries();
+  const localEnquiries  = await adminFetchEnquiries();
 
   const imagesByCategory: Record<string, number> = {};
   serviceCategories.forEach((c) => {
@@ -558,11 +326,10 @@ export async function adminFetchDashboard(): Promise<DashboardStats> {
   });
 
   return {
-    totalImages: allGalleryItems.length,
-    totalEnquiries: localEnquiries.length,
+    totalImages:      allGalleryItems.length,
+    totalEnquiries:   localEnquiries.length,
     imagesByCategory,
-    recentEnquiries: localEnquiries.slice(0, 5),
-    recentUploads: allGalleryItems.slice(0, 5),
+    recentEnquiries:  localEnquiries.slice(0, 5),
+    recentUploads:    allGalleryItems.slice(0, 5),
   };
 }
-

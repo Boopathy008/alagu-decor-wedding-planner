@@ -2,21 +2,12 @@ import { createClient } from "@supabase/supabase-js";
 
 const supabaseUrl = "https://liszotiorqqcbuwhwbvu.supabase.co";
 
-// Publishable key — safe for public reads (gallery display)
+// Publishable (anon) key — safe for browser use, public read-only queries only.
 const supabasePublishableKey =
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-  "sb_publishable_x5KnwBSSCmz_OxKl5cyskw_R600Qzly";
+  "sb_publishable_x5KnwBSSCmz_OxKl5cyskw_RFZ10nvP";
 
-// Secret key — used ONLY for admin write operations (upload / delete)
-const supabaseSecretKey = import.meta.env.VITE_SUPABASE_SECRET_KEY || supabasePublishableKey;
-
-// Public client (read-only gallery queries)
+// Single public client used for read-only gallery and enquiry queries.
+// Admin writes (create / update / delete gallery items) go through the
+// Spring Boot backend at /api/admin/gallery — never through Supabase directly.
 export const supabase = createClient(supabaseUrl, supabasePublishableKey);
-
-// Admin client (write operations: insert, update, delete gallery items & storage)
-export const supabaseAdmin = createClient(supabaseUrl, supabaseSecretKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-});
