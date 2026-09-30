@@ -429,18 +429,7 @@ export async function adminDeleteGalleryItem(id: number) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<GalleryItem[]> {
-  // 1. Try Spring Boot backend (returns published + unpublished).
-  try {
-    const url = categorySlug ? `/admin/gallery?category=${categorySlug}` : "/admin/gallery";
-    const res = await api.get<ApiResponse<any[]>>(url);
-    if (res.data?.data != null) {
-      const items = res.data.data.map(dtoToItem);
-      items.forEach(saveLocalGalleryItem);
-      return items;
-    }
-  } catch (_) {}
-
-  // 2. Supabase anon read.
+  // 1. Supabase anon read FIRST (fastest, ~50ms edge query — avoids 30-60s Render cold-start delays)
   let dbItems: GalleryItem[] = [];
   try {
     let q = supabase
@@ -450,7 +439,7 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
     if (categorySlug) q = q.eq("gallery_categories.slug", categorySlug);
 
     const { data, error } = await q;
-    if (!error && data) {
+    if (!error && data && data.length > 0) {
       dbItems = data.map((item: any) => ({
         id:              item.id,
         categorySlug:    item.gallery_categories?.slug || categorySlug || "",
@@ -462,10 +451,25 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
         published:       item.published,
         createdAt:       item.created_at,
       }));
+
+      // Cache locally and return immediately for instant UI render
+      dbItems.forEach(saveLocalGalleryItem);
+      return dbItems;
     }
   } catch (_) {}
 
-  // 3. Merge with local cache (DB wins over local).
+  // 2. Spring Boot backend fallback (short 3s timeout so UI never hangs)
+  try {
+    const url = categorySlug ? `/admin/gallery?category=${categorySlug}` : "/admin/gallery";
+    const res = await api.get<ApiResponse<any[]>>(url, { timeout: 3000 });
+    if (res.data?.data != null) {
+      const items = res.data.data.map(dtoToItem);
+      items.forEach(saveLocalGalleryItem);
+      return items;
+    }
+  } catch (_) {}
+
+  // 3. Merge with local cache fallback
   const map = new Map<number, GalleryItem>();
   dbItems.forEach((item) => map.set(item.id, item));
   getLocalGalleryItems().forEach((item) => {
@@ -483,11 +487,37 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
 // Admin enquiries
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function adminFetchEnquiries() {
+export async function adminFetchEnquiries(): Promise<EnquiryRecord[]> {
+  // 1. Supabase direct read first for instant load
   try {
-    const res = await api.get<ApiResponse<EnquiryRecord[]>>("/admin/enquiries");
+    const { data, error } = await supabase
+      .from("enquiries")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (!error && data && data.length > 0) {
+      return data.map((e: any) => ({
+        id: e.id,
+        name: e.name || "",
+        phone: e.phone || "",
+        email: e.email || "",
+        eventType: e.event_type || "",
+        eventDate: e.event_date || "",
+        location: e.location || "",
+        guestCount: e.guest_count || "",
+        servicesInterested: e.services_interested || [],
+        message: e.message || "",
+        status: e.status || "NEW",
+        createdAt: e.created_at,
+      }));
+    }
+  } catch (_) {}
+
+  // 2. Spring Boot backend fallback (short 3s timeout)
+  try {
+    const res = await api.get<ApiResponse<EnquiryRecord[]>>("/admin/enquiries", { timeout: 3000 });
     if (res.data?.data && res.data.data.length > 0) return res.data.data;
   } catch (_) {}
+
   return getLocalEnquiries();
 }
 
