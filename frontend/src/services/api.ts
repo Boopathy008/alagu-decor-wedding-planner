@@ -302,141 +302,100 @@ export async function adminCreateGalleryItem(formData: FormData): Promise<Galler
   const catInfo = getCategoryBySlug(categorySlug);
   const defaultSubcategorySlug = subcategorySlug || catInfo?.gallerySubcategories[0]?.slug || categorySlug;
 
-  // ── Bulletproof wrapper: NOTHING below can ever throw to the caller ──
-  const emergencyItem: GalleryItem = {
-    id: Date.now(),
-    categorySlug,
-    subcategorySlug: defaultSubcategorySlug,
-    subcategoryName: defaultSubcategorySlug,
-    title,
-    description,
-    imageUrl: "",
-    published,
-    createdAt: new Date().toISOString(),
-  };
+  // 1. Upload image to Supabase storage
+  const ext = rawFile.name.split(".").pop() || "jpg";
+  const fileName = `gallery/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
 
-  try {
-    // Instant step: compress and generate Data URL so UI completes in under 1 second
-    let imageUrl = "";
-    try {
-      const compressed = await compressImageFile(rawFile);
-      imageUrl = await fileToDataUrl(compressed);
-      
-      // Background async upload to Supabase storage (non-blocking)
-      uploadImageToStorage(rawFile).catch(() => {});
-    } catch (_) {
-      try { imageUrl = await fileToDataUrl(rawFile); } catch (__) {}
-    }
-    if (!imageUrl) {
-      try { imageUrl = await fileToDataUrl(rawFile); } catch (_) {}
-    }
+  const { error: uploadError } = await supabaseAdmin.storage
+    .from("gallery-images")
+    .upload(fileName, rawFile, { cacheControl: "3600", upsert: true, contentType: rawFile.type });
 
-    emergencyItem.imageUrl = imageUrl;
-    const fallbackItem: GalleryItem = { ...emergencyItem, imageUrl };
-
-    // Step 2: try Supabase DB insert (completely optional – always falls back)
-    try {
-      let categoryId = 0;
-      const catQuery = await supabaseAdmin
-        .from("gallery_categories")
-        .select("id")
-        .eq("slug", categorySlug)
-        .maybeSingle();
-
-      if (catQuery.data?.id) {
-        categoryId = catQuery.data.id;
-      } else {
-        const catInfo = getCategoryBySlug(categorySlug);
-        const catName = catInfo?.name || categorySlug.charAt(0).toUpperCase() + categorySlug.slice(1);
-        const newCat = await supabaseAdmin
-          .from("gallery_categories")
-          .insert([{ name: catName, slug: categorySlug }])
-          .select("id")
-          .single();
-        categoryId = newCat.data?.id ?? 0;
-      }
-
-      let subcategoryId = 0;
-      const subSlug = defaultSubcategorySlug;
-      const subQuery = await supabaseAdmin
-        .from("gallery_subcategories")
-        .select("id")
-        .eq("category_id", categoryId)
-        .eq("slug", subSlug)
-        .maybeSingle();
-
-      if (subQuery.data?.id) {
-        subcategoryId = subQuery.data.id;
-      } else {
-        const fallbackSub = await supabaseAdmin
-          .from("gallery_subcategories")
-          .select("id")
-          .eq("category_id", categoryId)
-          .limit(1)
-          .maybeSingle();
-
-        if (fallbackSub.data?.id) {
-          subcategoryId = fallbackSub.data.id;
-        } else {
-          const catInfo = getCategoryBySlug(categorySlug);
-          const subInfo = catInfo?.gallerySubcategories.find((s: any) => s.slug === subSlug);
-          const subName = subInfo?.name || subSlug.charAt(0).toUpperCase() + subSlug.slice(1);
-          const newSub = await supabaseAdmin
-            .from("gallery_subcategories")
-            .insert([{ category_id: categoryId, name: subName, slug: subSlug }])
-            .select("id")
-            .single();
-          subcategoryId = newSub.data?.id ?? 0;
-        }
-      }
-
-      if (categoryId && subcategoryId) {
-        const { data, error } = await supabaseAdmin
-          .from("gallery_items")
-          .insert([{
-            category_id: categoryId,
-            subcategory_id: subcategoryId,
-            title,
-            description,
-            image_url: imageUrl,
-            cloudinary_public_id: imageUrl.slice(0, 50),
-            published,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          }])
-          .select("*, gallery_categories(slug), gallery_subcategories(slug, name)")
-          .single();
-
-        if (!error && data) {
-          const dbItem: GalleryItem = {
-            id: data.id,
-            categorySlug: data.gallery_categories?.slug || categorySlug,
-            subcategorySlug: data.gallery_subcategories?.slug || subcategorySlug,
-            subcategoryName: data.gallery_subcategories?.name || subcategorySlug,
-            title: data.title,
-            description: data.description,
-            imageUrl: data.image_url,
-            published: data.published,
-            createdAt: data.created_at,
-          };
-          saveLocalGalleryItem(dbItem);
-          return dbItem;
-        }
-      }
-    } catch (dbErr) {
-      console.warn("DB insert skipped, using local cache:", dbErr);
-    }
-
-    // Always save locally as safety net
-    saveLocalGalleryItem(fallbackItem);
-    return fallbackItem;
-
-  } catch (globalErr) {
-    // Absolute last resort – should never reach here
-    console.error("adminCreateGalleryItem global error:", globalErr);
-    saveLocalGalleryItem(emergencyItem);
-    return emergencyItem;
+  let imageUrl = "";
+  if (!uploadError) {
+    const { data: urlData } = supabaseAdmin.storage
+      .from("gallery-images")
+      .getPublicUrl(fileName);
+    if (urlData?.publicUrl) imageUrl = urlData.publicUrl;
   }
+
+  if (!imageUrl) {
+    throw new Error("Upload failed. Check file size/type and try again.");
+  }
+
+  // 2. Fetch category_id from Supabase
+  let categoryId = 0;
+  const catQuery = await supabaseAdmin
+    .from("gallery_categories")
+    .select("id")
+    .eq("slug", categorySlug)
+    .maybeSingle();
+
+  if (catQuery.data?.id) {
+    categoryId = catQuery.data.id;
+  } else {
+    const catName = catInfo?.name || categorySlug.charAt(0).toUpperCase() + categorySlug.slice(1);
+    const newCat = await supabaseAdmin
+      .from("gallery_categories")
+      .insert([{ name: catName, slug: categorySlug }])
+      .select("id")
+      .single();
+    categoryId = newCat.data?.id ?? 0;
+  }
+
+  // 3. Fetch subcategory_id from Supabase (scoped strictly to categoryId)
+  let subcategoryId = 0;
+  const subQuery = await supabaseAdmin
+    .from("gallery_subcategories")
+    .select("id")
+    .eq("category_id", categoryId)
+    .eq("slug", defaultSubcategorySlug)
+    .maybeSingle();
+
+  if (subQuery.data?.id) {
+    subcategoryId = subQuery.data.id;
+  } else {
+    const subInfo = catInfo?.gallerySubcategories.find((s) => s.slug === defaultSubcategorySlug);
+    const subName = subInfo?.name || defaultSubcategorySlug.charAt(0).toUpperCase() + defaultSubcategorySlug.slice(1);
+    const newSub = await supabaseAdmin
+      .from("gallery_subcategories")
+      .insert([{ category_id: categoryId, name: subName, slug: defaultSubcategorySlug }])
+      .select("id")
+      .single();
+    subcategoryId = newSub.data?.id ?? 0;
+  }
+
+  // 4. Insert gallery item into Supabase
+  const { data, error } = await supabaseAdmin
+    .from("gallery_items")
+    .insert([{
+      category_id: categoryId,
+      subcategory_id: subcategoryId,
+      title,
+      description,
+      image_url: imageUrl,
+      cloudinary_public_id: imageUrl.slice(0, 50),
+      published,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }])
+    .select("*, gallery_categories(slug), gallery_subcategories(slug, name)")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "Failed to save gallery item to database.");
+  }
+
+  return {
+    id: data.id,
+    categorySlug: data.gallery_categories?.slug || categorySlug,
+    subcategorySlug: data.gallery_subcategories?.slug || defaultSubcategorySlug,
+    subcategoryName: data.gallery_subcategories?.name || defaultSubcategorySlug,
+    title: data.title,
+    description: data.description,
+    imageUrl: data.image_url,
+    published: data.published,
+    createdAt: data.created_at,
+  };
 }
 
 export async function adminUpdateGalleryItem(id: number, formData: FormData): Promise<GalleryItem> {

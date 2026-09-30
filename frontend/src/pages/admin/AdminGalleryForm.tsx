@@ -51,6 +51,7 @@ export default function AdminGalleryForm() {
     if (f) setPreview(URL.createObjectURL(f));
   }
 
+  const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
@@ -63,6 +64,7 @@ export default function AdminGalleryForm() {
 
     setSaving(true);
     setSuccessMessage(false);
+    setError(null);
 
     const finalTitle = title.trim() || file?.name || "Gallery Image";
 
@@ -80,16 +82,15 @@ export default function AdminGalleryForm() {
       } else {
         await adminCreateGalleryItem(formData);
       }
-    } catch (_) {
-      // Swallowed
+      setSuccessMessage(true);
+      setTimeout(() => {
+        navigate(`/admin/gallery/${categorySlug}`);
+      }, 1200);
+    } catch (err: any) {
+      setError(err?.message || "Upload failed. Check file size/type and try again.");
     } finally {
       setSaving(false);
-      setSuccessMessage(true);
     }
-
-    setTimeout(() => {
-      navigate(`/admin/gallery/${categorySlug}`);
-    }, 1200);
   }
 
   return (
@@ -183,6 +184,12 @@ export default function AdminGalleryForm() {
         {saving && (
           <p className="text-sm text-amber-600 animate-pulse">
             ⏳ Uploading image, please wait...
+          </p>
+        )}
+
+        {error && (
+          <p className="text-sm font-semibold text-red-600">
+            {error}
           </p>
         )}
 
