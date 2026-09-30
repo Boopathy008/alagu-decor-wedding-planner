@@ -429,8 +429,7 @@ export async function adminDeleteGalleryItem(id: number) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<GalleryItem[]> {
-  // 1. Supabase anon read FIRST (fastest, ~50ms edge query — avoids 30-60s Render cold-start delays)
-  let dbItems: GalleryItem[] = [];
+  // 1. Query Supabase direct over high-speed edge API (<100ms response)
   try {
     let q = supabase
       .from("gallery_items")
@@ -439,8 +438,8 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
     if (categorySlug) q = q.eq("gallery_categories.slug", categorySlug);
 
     const { data, error } = await q;
-    if (!error && data && data.length > 0) {
-      dbItems = data.map((item: any) => ({
+    if (!error && data) {
+      const dbItems: GalleryItem[] = data.map((item: any) => ({
         id:              item.id,
         categorySlug:    item.gallery_categories?.slug || categorySlug || "",
         subcategorySlug: item.gallery_subcategories?.slug || "",
@@ -452,35 +451,14 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
         createdAt:       item.created_at,
       }));
 
-      // Cache locally and return immediately for instant UI render
       dbItems.forEach(saveLocalGalleryItem);
       return dbItems;
     }
   } catch (_) {}
 
-  // 2. Spring Boot backend fallback (short 3s timeout so UI never hangs)
-  try {
-    const url = categorySlug ? `/admin/gallery?category=${categorySlug}` : "/admin/gallery";
-    const res = await api.get<ApiResponse<any[]>>(url, { timeout: 3000 });
-    if (res.data?.data != null) {
-      const items = res.data.data.map(dtoToItem);
-      items.forEach(saveLocalGalleryItem);
-      return items;
-    }
-  } catch (_) {}
-
-  // 3. Merge with local cache fallback
-  const map = new Map<number, GalleryItem>();
-  dbItems.forEach((item) => map.set(item.id, item));
-  getLocalGalleryItems().forEach((item) => {
-    if (!categorySlug || item.categorySlug === categorySlug) {
-      if (!map.has(item.id)) map.set(item.id, item);
-    }
-  });
-
-  return Array.from(map.values()).sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
+  // 2. Local cache fallback
+  const cached = getLocalGalleryItems();
+  return categorySlug ? cached.filter((i) => i.categorySlug === categorySlug) : cached;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -488,13 +466,12 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function adminFetchEnquiries(): Promise<EnquiryRecord[]> {
-  // 1. Supabase direct read first for instant load
   try {
     const { data, error } = await supabase
       .from("enquiries")
       .select("*")
       .order("created_at", { ascending: false });
-    if (!error && data && data.length > 0) {
+    if (!error && data) {
       return data.map((e: any) => ({
         id: e.id,
         name: e.name || "",
@@ -512,12 +489,6 @@ export async function adminFetchEnquiries(): Promise<EnquiryRecord[]> {
     }
   } catch (_) {}
 
-  // 2. Spring Boot backend fallback (short 3s timeout)
-  try {
-    const res = await api.get<ApiResponse<EnquiryRecord[]>>("/admin/enquiries", { timeout: 3000 });
-    if (res.data?.data && res.data.data.length > 0) return res.data.data;
-  } catch (_) {}
-
   return getLocalEnquiries();
 }
 
@@ -526,8 +497,10 @@ export async function adminFetchEnquiries(): Promise<EnquiryRecord[]> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function adminFetchDashboard(): Promise<DashboardStats> {
-  const allGalleryItems = await adminFetchAllGalleryItems();
-  const localEnquiries  = await adminFetchEnquiries();
+  const [allGalleryItems, localEnquiries] = await Promise.all([
+    adminFetchAllGalleryItems(),
+    adminFetchEnquiries(),
+  ]);
 
   const imagesByCategory: Record<string, number> = {};
   serviceCategories.forEach((c) => {
