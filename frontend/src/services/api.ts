@@ -204,33 +204,42 @@ export async function fetchGalleryByCategoryAndSubcategory(
   return all.filter((item) => item.published && item.subcategorySlug === subcategorySlug);
 }
 
-export async function fetchFeaturedGallery(): Promise<GalleryItem[]> {
-  const all = await adminFetchAllGalleryItems();
-  const featured: GalleryItem[] = [];
+/**
+ * Fetch the ONE globally-featured homepage image.
+ * Reads is_featured = true directly from Supabase — no frontend state, no cache.
+ * Returns null when no image has been selected yet.
+ */
+export async function fetchHomepageImage(): Promise<GalleryItem | null> {
+  try {
+    const { data, error } = await supabase
+      .from("gallery_items")
+      .select("*, gallery_categories!inner(slug), gallery_subcategories!inner(slug, name)")
+      .eq("is_featured", true)
+      .limit(1)
+      .maybeSingle();
 
-  serviceCategories.forEach((c) => {
-    // 1. Highest priority: Manually chosen Front Page Cover image for this category
-    let match = all.find(
-      (item) => item.categorySlug === c.slug && item.published && item.isFeatured
-    );
-
-    // 2. Second priority: Latest published image from the category's FIRST subcategory
-    if (!match) {
-      const firstSubSlug = c.gallerySubcategories[0]?.slug;
-      match = all.find(
-        (item) => item.categorySlug === c.slug && item.subcategorySlug === firstSubSlug && item.published
-      );
+    if (error) {
+      console.warn("fetchHomepageImage error:", error.message);
+      return null;
     }
+    if (!data) return null;
 
-    // 3. Fallback: Latest published image in the category if first subcategory has no uploads yet
-    if (!match) {
-      match = all.find((item) => item.categorySlug === c.slug && item.published);
-    }
-
-    if (match) featured.push(match);
-  });
-
-  return featured;
+    return {
+      id:              data.id,
+      categorySlug:    data.gallery_categories?.slug || "",
+      subcategorySlug: data.gallery_subcategories?.slug || "",
+      subcategoryName: data.gallery_subcategories?.name || "",
+      title:           data.title,
+      description:     data.description ?? "",
+      imageUrl:        data.image_url,
+      published:       data.published,
+      isFeatured:      true,
+      createdAt:       data.created_at,
+    };
+  } catch (err) {
+    console.warn("fetchHomepageImage exception:", err);
+    return null;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -504,44 +513,51 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
 
 export async function adminSetFeaturedGalleryItem(
   id: number,
-  categorySlug?: string,
-  _subcategorySlug?: string   // accepted for API compatibility, not used for filtering
+  _categorySlug?: string,
+  _subcategorySlug?: string
 ): Promise<GalleryItem[]> {
   try {
-    // 1. Clear ALL previously featured items globally (only one image can be featured at a time)
-    await supabase
+    // Step 1 — Clear the is_featured flag on ALL rows globally.
+    // We use neq("id", -1) as a universal "all rows" filter that works with
+    // Supabase's safety check (Supabase rejects bare updates without a WHERE).
+    const { error: clearErr } = await supabase
       .from("gallery_items")
       .update({ is_featured: false })
-      .gte("id", 1);
+      .neq("id", -1);  // matches every row (no real id is -1)
 
-    // 2. Set the newly chosen image as featured. Also ensure it's published.
-    await supabase
+    if (clearErr) console.warn("Clear featured failed:", clearErr.message);
+
+    // Step 2 — Mark only the chosen image as featured.
+    // DO NOT touch published — requirement says other images must not be modified.
+    const { error: setErr } = await supabase
       .from("gallery_items")
-      .update({ is_featured: true, published: true })
+      .update({ is_featured: true })
       .eq("id", id);
+
+    if (setErr) console.warn("Set featured failed:", setErr.message);
   } catch (err) {
-    console.warn("adminSetFeaturedGalleryItem failed:", err);
+    console.warn("adminSetFeaturedGalleryItem exception:", err);
   }
 
-  return adminFetchAllGalleryItems(categorySlug);
+  // Return ALL items so the caller can update its full list
+  return adminFetchAllGalleryItems();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Admin gallery — UNSET FEATURED
+// Admin gallery — UNSET FEATURED (clear homepage selection)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function adminUnsetFeaturedGalleryItem(
-  id: number,
-  categorySlug?: string
-): Promise<GalleryItem[]> {
+export async function adminUnsetFeaturedGalleryItem(): Promise<GalleryItem[]> {
   try {
-    await supabase
+    const { error } = await supabase
       .from("gallery_items")
       .update({ is_featured: false })
-      .eq("id", id);
-  } catch (_) {}
-
-  return adminFetchAllGalleryItems(categorySlug);
+      .neq("id", -1);
+    if (error) console.warn("Unset featured failed:", error.message);
+  } catch (err) {
+    console.warn("adminUnsetFeaturedGalleryItem exception:", err);
+  }
+  return adminFetchAllGalleryItems();
 }
 
 

@@ -1,12 +1,9 @@
-// Vercel live deployment build update — Admin Gallery Form
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { serviceCategories, getCategoryBySlug } from "@/config/services";
 import {
   adminCreateGalleryItem,
   adminFetchAllGalleryItems,
-  adminSetFeaturedGalleryItem,
-  adminUnsetFeaturedGalleryItem,
   adminUpdateGalleryItem,
 } from "@/services/api";
 
@@ -16,13 +13,13 @@ export default function AdminGalleryForm() {
   const navigate = useNavigate();
   const isEditing = Boolean(id);
 
-  const [categorySlug, setCategorySlug] = useState(searchParams.get("category") || serviceCategories[0].slug);
+  const [categorySlug, setCategorySlug] = useState(
+    searchParams.get("category") || serviceCategories[0].slug
+  );
   const [subcategorySlug, setSubcategorySlug] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [published, setPublished] = useState(true);
-  const [isFeatured, setIsFeatured] = useState(false);
-  const [originalIsFeatured, setOriginalIsFeatured] = useState(false); // track what it was before editing
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -31,12 +28,17 @@ export default function AdminGalleryForm() {
 
   const category = getCategoryBySlug(categorySlug);
 
+  // Reset subcategory when category changes
   useEffect(() => {
-    if (category && !category.gallerySubcategories.some((s) => s.slug === subcategorySlug)) {
+    if (
+      category &&
+      !category.gallerySubcategories.some((s) => s.slug === subcategorySlug)
+    ) {
       setSubcategorySlug(category.gallerySubcategories[0]?.slug || "");
     }
   }, [categorySlug]);
 
+  // Load existing item when editing
   useEffect(() => {
     if (!isEditing || !id) return;
     adminFetchAllGalleryItems().then((items) => {
@@ -47,8 +49,6 @@ export default function AdminGalleryForm() {
         setTitle(item.title);
         setDescription(item.description);
         setPublished(item.published);
-        setIsFeatured(Boolean(item.isFeatured));
-        setOriginalIsFeatured(Boolean(item.isFeatured));
         setPreview(item.imageUrl);
       }
     });
@@ -83,26 +83,10 @@ export default function AdminGalleryForm() {
     if (file) formData.append("image", file);
 
     try {
-      let savedItem;
       if (isEditing && id) {
-        savedItem = await adminUpdateGalleryItem(Number(id), formData);
+        await adminUpdateGalleryItem(Number(id), formData);
       } else {
-        savedItem = await adminCreateGalleryItem(formData);
-      }
-
-      const itemId = savedItem?.id ?? (isEditing && id ? Number(id) : null);
-
-      if (itemId) {
-        if (isFeatured && !originalIsFeatured) {
-          // User just CHECKED the box → set as front page cover for this subcategory
-          await adminSetFeaturedGalleryItem(itemId, categorySlug, subcategorySlug);
-        } else if (!isFeatured && originalIsFeatured) {
-          // User just UNCHECKED the box → remove from front page cover
-          await adminUnsetFeaturedGalleryItem(itemId, categorySlug);
-        } else if (isFeatured && originalIsFeatured) {
-          // Still featured — re-apply to make sure
-          await adminSetFeaturedGalleryItem(itemId, categorySlug, subcategorySlug);
-        }
+        await adminCreateGalleryItem(formData);
       }
 
       setSuccessMessage(true);
@@ -123,6 +107,7 @@ export default function AdminGalleryForm() {
       </h1>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Category */}
         <label className="block">
           <span className="text-xs uppercase tracking-widest2 text-charcoal/50">
             Main Category
@@ -140,6 +125,7 @@ export default function AdminGalleryForm() {
           </select>
         </label>
 
+        {/* Subcategory */}
         <label className="block">
           <span className="text-xs uppercase tracking-widest2 text-charcoal/50">
             Subcategory
@@ -157,6 +143,7 @@ export default function AdminGalleryForm() {
           </select>
         </label>
 
+        {/* Title */}
         <label className="block">
           <span className="text-xs uppercase tracking-widest2 text-charcoal/50">Title</span>
           <input
@@ -167,6 +154,7 @@ export default function AdminGalleryForm() {
           />
         </label>
 
+        {/* Description */}
         <label className="block">
           <span className="text-xs uppercase tracking-widest2 text-charcoal/50">
             Description
@@ -180,6 +168,7 @@ export default function AdminGalleryForm() {
           />
         </label>
 
+        {/* Image upload */}
         <label className="block">
           <span className="text-xs uppercase tracking-widest2 text-charcoal/50">
             Image {isEditing && "(leave empty to keep current image)"}
@@ -191,13 +180,19 @@ export default function AdminGalleryForm() {
             className="mt-1 w-full text-sm"
           />
           {preview && (
-            <img src={preview} alt="Preview" className="mt-3 h-40 object-cover border border-charcoal/10" />
+            <img
+              src={preview}
+              alt="Preview"
+              className="mt-3 h-40 object-cover border border-charcoal/10"
+            />
           )}
         </label>
 
-        {/* ─── Published ─────────────────────────────────────────────────── */}
+        {/* Published checkbox */}
         <div className="border border-charcoal/15 bg-white p-4 rounded">
-          <p className="text-xs uppercase tracking-widest2 text-charcoal/40 mb-3">Visibility</p>
+          <p className="text-xs uppercase tracking-widest2 text-charcoal/40 mb-3">
+            Visibility
+          </p>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
@@ -206,93 +201,41 @@ export default function AdminGalleryForm() {
               className="w-4 h-4"
             />
             <div>
-              <span className="text-sm font-medium">Published (visible on the public site)</span>
-              <p className="text-xs text-charcoal/40">
-                When checked, this image appears in the <strong>Our Decorations Work</strong> gallery and all 7 category pages. Uncheck to hide it from the public site.
+              <span className="text-sm font-medium">
+                Published (visible on the public site)
+              </span>
+              <p className="text-xs text-charcoal/40 mt-0.5">
+                When checked, this image appears in Our Works gallery and all 7
+                category pages. Uncheck to hide from the public site.
               </p>
             </div>
           </label>
         </div>
 
-        {/* ─── Homepage Display Radio Group ──────────────────────────────── */}
-        <div className="border border-charcoal/20 bg-white p-5 rounded-lg space-y-4">
-          <p className="text-xs font-bold uppercase tracking-widest2 text-charcoal/60">
-            Homepage Display Option
+        {/* Homepage note */}
+        <div className="border border-amber-200 bg-amber-50 p-4 rounded text-sm text-charcoal/70">
+          <p className="font-semibold text-charcoal mb-1">🏠 Homepage Image Selection</p>
+          <p>
+            To set an image as the homepage cover, go to the category gallery
+            page and click <strong>"Show on Homepage"</strong> on the image
+            directly. Only one image across all categories can be the homepage
+            image at a time.
           </p>
-
-          <div className="space-y-3">
-            {/* Radio 1: Show on Homepage */}
-            <label
-              className={`flex items-start gap-3 p-3.5 rounded-md border cursor-pointer transition-all ${
-                isFeatured
-                  ? "border-amber-500 bg-amber-50/90 shadow-sm"
-                  : "border-charcoal/15 bg-white hover:border-amber-300"
-              }`}
-            >
-              <input
-                type="radio"
-                name="homepageOption"
-                value="featured"
-                checked={isFeatured === true}
-                onChange={() => {
-                  setIsFeatured(true);
-                  setPublished(true);
-                }}
-                className="mt-0.5 w-4 h-4 text-amber-600 focus:ring-amber-500 accent-amber-600 cursor-pointer"
-              />
-              <div>
-                <span className="text-sm font-semibold text-charcoal block">
-                  Show on Homepage (Featured Cover Image)
-                </span>
-                <p className="text-xs text-charcoal/60 mt-0.5">
-                  Select this radio button to display this image on the homepage for "{category?.name}". Selecting this automatically unselects any previously selected homepage image.
-                </p>
-              </div>
-            </label>
-
-            {/* Radio 2: Show in Gallery Only */}
-            <label
-              className={`flex items-start gap-3 p-3.5 rounded-md border cursor-pointer transition-all ${
-                !isFeatured
-                  ? "border-charcoal/40 bg-charcoal/5"
-                  : "border-charcoal/15 bg-white hover:border-charcoal/30"
-              }`}
-            >
-              <input
-                type="radio"
-                name="homepageOption"
-                value="standard"
-                checked={isFeatured === false}
-                onChange={() => setIsFeatured(false)}
-                className="mt-0.5 w-4 h-4 text-charcoal focus:ring-charcoal accent-charcoal cursor-pointer"
-              />
-              <div>
-                <span className="text-sm font-semibold text-charcoal block">
-                  Show in Gallery Only (Do not show on Homepage)
-                </span>
-                <p className="text-xs text-charcoal/60 mt-0.5">
-                  This image will be visible in "Our Works" and category gallery pages, but will not be the featured image on the homepage.
-                </p>
-              </div>
-            </label>
-          </div>
         </div>
 
         {saving && (
           <p className="text-sm text-amber-600 animate-pulse">
-            ⏳ {isFeatured ? "Saving & updating front page cover..." : "Saving changes, please wait..."}
+            ⏳ Saving changes, please wait...
           </p>
         )}
 
         {error && (
-          <p className="text-sm font-semibold text-red-600">
-            ⚠ {error}
-          </p>
+          <p className="text-sm font-semibold text-red-600">⚠ {error}</p>
         )}
 
         {successMessage && (
           <p className="text-sm font-semibold text-emerald-600">
-            ✓ {isFeatured ? "Saved & set as front page cover!" : "Saved successfully!"} Redirecting...
+            ✓ Saved successfully! Redirecting...
           </p>
         )}
 
