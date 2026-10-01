@@ -208,7 +208,7 @@ export default function AdminGalleryForm() {
             <div>
               <span className="text-sm font-medium">Published (visible on the public site)</span>
               <p className="text-xs text-charcoal/40">
-                Show this image in Our Works gallery page
+                When checked, this image appears in the <strong>Our Decorations Work</strong> gallery and all 7 category pages. Uncheck to hide it from the public site.
               </p>
             </div>
           </label>

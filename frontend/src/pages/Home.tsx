@@ -24,7 +24,7 @@ export default function Home() {
       <section className="max-w-4xl mx-auto px-6 py-28 text-center">
         <FadeIn>
           <p className="text-xl md:text-3xl text-charcoal/80 leading-relaxed font-display font-light">
-            Crafting unforgettable weddings & grand celebrations with complete end-to-end design, decoration, and seamless event management.
+            Crafting unforgettable weddings &amp; grand celebrations with complete end-to-end design, decoration, and seamless event management.
           </p>
         </FadeIn>
       </section>
@@ -63,20 +63,32 @@ function CategoryInteractiveSection({
 
   const reverse = index % 2 === 1;
 
-  // Resolve cover image for selected subcategory
   const activeSubName =
     subcategories.find((s) => s.slug === activeSubSlug)?.name || activeSubSlug;
 
-  // 1. Items in this category & subcategory
-  const subItems = galleryItems.filter(
-    (item) => item.categorySlug === category.slug && item.subcategorySlug === activeSubSlug
+  // Items in this category
+  const categoryItems = galleryItems.filter(
+    (item) => item.categorySlug === category.slug
   );
 
-  // 2. Featured item in this subcategory (if admin selected one)
-  const featuredInSub = subItems.find((item) => item.isFeatured);
+  // 1. First priority: The ONE globally featured image for this category
+  const globallyFeatured = categoryItems.find((item) => item.isFeatured);
 
-  // 3. Fallback item in this subcategory or category
-  const activeItem = featuredInSub || subItems[0];
+  // 2. Items in the selected subcategory
+  const subItems = categoryItems.filter(
+    (item) => item.subcategorySlug === activeSubSlug
+  );
+
+  // 3. Resolve display image:
+  //    - If a global featured image exists for this category, use it as the main cover
+  //    - If the subcategory pill selected matches the featured item's subcategory, also use it
+  //    - Otherwise use the first published item in the selected subcategory
+  const featuredForActiveSub = subItems.find((item) => item.isFeatured);
+  const activeItem =
+    featuredForActiveSub ||          // featured image in active subcategory
+    globallyFeatured ||              // any featured image in this category
+    subItems[0] ||                   // first published item in active subcategory
+    categoryItems[0];                // any published item in this category
 
   const displayImage =
     activeItem?.imageUrl ||
@@ -110,6 +122,11 @@ function CategoryInteractiveSection({
                 className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-110"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-deep/90 via-deep/20 to-transparent flex flex-col justify-end p-6 text-ivory">
+                {activeItem?.isFeatured && (
+                  <span className="text-[9px] uppercase tracking-widest text-amber-400 font-bold mb-1">
+                    ★ Featured Cover
+                  </span>
+                )}
                 <span className="text-[10px] uppercase tracking-widest2 text-accent font-semibold mb-1">
                   {category.name} — {activeSubName}
                 </span>
@@ -186,7 +203,7 @@ function CinematicHero() {
           transition={{ duration: 1.4, ease: [0.16, 1, 0.3, 1] }}
           className="text-xs uppercase tracking-widest2 text-accent mb-6"
         >
-          Wedding & Event Studio
+          Wedding &amp; Event Studio
         </motion.p>
 
         <motion.h1

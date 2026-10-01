@@ -481,7 +481,7 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
         description:     item.description ?? "",
         imageUrl:        item.image_url,
         published:       item.published,
-        isFeatured:      Boolean(item.cloudinary_public_id?.includes("featured_cover")),
+        isFeatured:      Boolean(item.is_featured),
         createdAt:       item.created_at,
       }));
 
@@ -496,75 +496,54 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Admin gallery — SET FEATURED FRONT PAGE COVER
+// Admin gallery — SET GLOBAL FEATURED HOMEPAGE IMAGE
 //
-// SAFE: only touches cloudinary_public_id, never touches `published`.
-// Only clears the PREVIOUS featured item (not all items) to avoid side-effects.
+// Ensures ONLY ONE image across ALL categories/subcategories is featured.
+// Sets is_featured = false for all other rows in DB, and is_featured = true on target.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function adminSetFeaturedGalleryItem(
   id: number,
-  categorySlug: string,
-  subcategorySlug?: string
+  categorySlug?: string,
+  _subcategorySlug?: string   // accepted for API compatibility, not used for filtering
 ): Promise<GalleryItem[]> {
   try {
-    const { data: catRow } = await supabase
-      .from("gallery_categories")
-      .select("id")
-      .eq("slug", categorySlug)
-      .maybeSingle();
-
-    if (catRow?.id) {
-      if (subcategorySlug) {
-        const { data: subRow } = await supabase
-          .from("gallery_subcategories")
-          .select("id")
-          .eq("category_id", catRow.id)
-          .eq("slug", subcategorySlug)
-          .maybeSingle();
-
-        if (subRow?.id) {
-          await supabase
-            .from("gallery_items")
-            .update({ cloudinary_public_id: "" })
-            .eq("category_id", catRow.id)
-            .eq("subcategory_id", subRow.id)
-            .eq("cloudinary_public_id", "featured_cover");
-        }
-      } else {
-        await supabase
-          .from("gallery_items")
-          .update({ cloudinary_public_id: "" })
-          .eq("category_id", catRow.id)
-          .eq("cloudinary_public_id", "featured_cover");
-      }
-    }
-
-    // Set the new featured item — ONLY updates cloudinary_public_id and ensures published is true.
+    // 1. Clear ALL previously featured items globally (only one image can be featured at a time)
     await supabase
       .from("gallery_items")
-      .update({ cloudinary_public_id: "featured_cover", published: true })
+      .update({ is_featured: false })
+      .gte("id", 1);
+
+    // 2. Set the newly chosen image as featured. Also ensure it's published.
+    await supabase
+      .from("gallery_items")
+      .update({ is_featured: true, published: true })
+      .eq("id", id);
+  } catch (err) {
+    console.warn("adminSetFeaturedGalleryItem failed:", err);
+  }
+
+  return adminFetchAllGalleryItems(categorySlug);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin gallery — UNSET FEATURED
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function adminUnsetFeaturedGalleryItem(
+  id: number,
+  categorySlug?: string
+): Promise<GalleryItem[]> {
+  try {
+    await supabase
+      .from("gallery_items")
+      .update({ is_featured: false })
       .eq("id", id);
   } catch (_) {}
 
   return adminFetchAllGalleryItems(categorySlug);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Admin gallery — UNSET FEATURED (remove front-page cover for an item)
-// ─────────────────────────────────────────────────────────────────────────────
-
-export async function adminUnsetFeaturedGalleryItem(id: number, categorySlug: string): Promise<GalleryItem[]> {
-  try {
-    await supabase
-      .from("gallery_items")
-      .update({ cloudinary_public_id: "" })
-      .eq("id", id)
-      .eq("cloudinary_public_id", "featured_cover"); // only clear if it IS the featured cover
-  } catch (_) {}
-
-  return adminFetchAllGalleryItems(categorySlug);
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Admin enquiries

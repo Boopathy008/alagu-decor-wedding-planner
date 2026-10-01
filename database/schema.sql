@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS gallery_items (
     image_url            TEXT NOT NULL,
     cloudinary_public_id VARCHAR(255) NOT NULL,
     published            BOOLEAN NOT NULL DEFAULT TRUE,
+    is_featured          BOOLEAN NOT NULL DEFAULT FALSE,
     created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -47,6 +48,7 @@ CREATE TABLE IF NOT EXISTS gallery_items (
 CREATE INDEX IF NOT EXISTS idx_gallery_items_category    ON gallery_items(category_id);
 CREATE INDEX IF NOT EXISTS idx_gallery_items_subcategory ON gallery_items(subcategory_id);
 CREATE INDEX IF NOT EXISTS idx_gallery_items_published   ON gallery_items(published);
+CREATE INDEX IF NOT EXISTS idx_gallery_items_featured    ON gallery_items(is_featured);
 
 CREATE TABLE IF NOT EXISTS enquiries (
     id          BIGSERIAL PRIMARY KEY,

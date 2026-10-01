@@ -31,11 +31,11 @@ export default function AdminGalleryCategory() {
       .finally(() => setLoading(false));
   }
 
-  async function handleSetFeatured(id: number, subcategorySlug?: string) {
+  async function handleSetFeatured(id: number) {
     if (!category) return;
     setSettingFeaturedId(id);
     try {
-      const updated = await adminSetFeaturedGalleryItem(id, category.slug, subcategorySlug);
+      const updated = await adminSetFeaturedGalleryItem(id, category.slug);
       setItems(updated);
     } finally {
       setSettingFeaturedId(null);
@@ -112,7 +112,7 @@ export default function AdminGalleryCategory() {
                         <label
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (!item.isFeatured) handleSetFeatured(item.id, item.subcategorySlug);
+                            if (!item.isFeatured) handleSetFeatured(item.id);
                           }}
                           className={`flex items-center gap-1.5 px-2 py-1 rounded cursor-pointer text-[11px] font-medium border transition-colors ${
                             item.isFeatured
@@ -122,9 +122,9 @@ export default function AdminGalleryCategory() {
                         >
                           <input
                             type="radio"
-                            name={`cat_homepage_radio_${category.slug}`}
+                            name="global_homepage_radio"
                             checked={Boolean(item.isFeatured)}
-                            onChange={() => handleSetFeatured(item.id, item.subcategorySlug)}
+                            onChange={() => handleSetFeatured(item.id)}
                             className="w-3.5 h-3.5 accent-amber-600 cursor-pointer"
                           />
                           <span>{item.isFeatured ? "Homepage Selected" : "Select for Homepage"}</span>
@@ -132,7 +132,7 @@ export default function AdminGalleryCategory() {
                       </div>
                       <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                         <button
-                          onClick={() => handleSetFeatured(item.id, item.subcategorySlug)}
+                          onClick={() => handleSetFeatured(item.id)}
                           disabled={settingFeaturedId === item.id}
                           className={`${
                             item.isFeatured ? "bg-amber-500" : "bg-accent"
