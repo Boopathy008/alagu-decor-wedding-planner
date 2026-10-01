@@ -38,21 +38,26 @@ export default function AdminGalleryCategory() {
   // Items in THIS category only (for display in this page)
   const categoryItems = allItems.filter((i) => i.categorySlug === categorySlug);
 
-  // The ONE globally featured item (across all categories)
-  const globalFeatured = allItems.find((i) => i.isFeatured);
+  // The featured item for THIS category section on the homepage
+  const categoryFeatured = categoryItems.find((i) => i.isFeatured);
 
   async function handleSetFeatured(id: number) {
     if (settingRef.current) return; // prevent double-click
     settingRef.current = true;
     setSettingFeaturedId(id);
 
-    // Optimistic update — immediately reflect in UI before DB confirms
+    // Optimistic update — set isFeatured for this item and clear other items in this category
     setAllItems((prev) =>
-      prev.map((item) => ({ ...item, isFeatured: item.id === id }))
+      prev.map((item) => {
+        if (item.categorySlug === categorySlug) {
+          return { ...item, isFeatured: item.id === id };
+        }
+        return item;
+      })
     );
 
     try {
-      const updated = await adminSetFeaturedGalleryItem(id);
+      const updated = await adminSetFeaturedGalleryItem(id, categorySlug);
       // Sync with DB truth
       setAllItems(updated);
     } catch (err) {
@@ -100,39 +105,34 @@ export default function AdminGalleryCategory() {
         </Link>
       </div>
 
-      {/* Global Homepage Selection Banner */}
+      {/* Category Homepage Selection Banner */}
       <div className={`mb-8 p-4 rounded border ${
-        globalFeatured
+        categoryFeatured
           ? "bg-amber-50 border-amber-300"
           : "bg-charcoal/5 border-charcoal/15"
       }`}>
         <p className="text-xs uppercase tracking-widest2 font-semibold mb-1 text-charcoal/60">
-          🏠 Global Homepage Image
+          🏠 Homepage Cover Image for {category.name}
         </p>
-        {globalFeatured ? (
+        {categoryFeatured ? (
           <div className="flex items-center gap-3">
             <img
-              src={globalFeatured.imageUrl}
-              alt={globalFeatured.title}
+              src={categoryFeatured.imageUrl}
+              alt={categoryFeatured.title}
               className="w-16 h-12 object-cover rounded border border-amber-300"
             />
             <div>
               <p className="text-sm font-semibold text-charcoal">
-                ★ {globalFeatured.title}
+                ★ {categoryFeatured.title}
               </p>
               <p className="text-xs text-charcoal/50">
-                {globalFeatured.categorySlug} / {globalFeatured.subcategorySlug}
-                {globalFeatured.categorySlug !== categorySlug && (
-                  <span className="ml-2 text-amber-600 font-medium">
-                    (from another category)
-                  </span>
-                )}
+                {categoryFeatured.subcategoryName || categoryFeatured.subcategorySlug}
               </p>
             </div>
           </div>
         ) : (
           <p className="text-sm text-charcoal/50">
-            No image selected. Click "Show on Homepage" on any image below to select one.
+            No homepage image selected for {category.name}. Click "Show on Homepage" on any image below to select its cover photo.
           </p>
         )}
       </div>

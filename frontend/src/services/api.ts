@@ -513,22 +513,41 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
 
 export async function adminSetFeaturedGalleryItem(
   id: number,
-  _categorySlug?: string,
+  categorySlug?: string,
   _subcategorySlug?: string
 ): Promise<GalleryItem[]> {
   try {
-    // Step 1 — Clear the is_featured flag on ALL rows globally.
-    // We use neq("id", -1) as a universal "all rows" filter that works with
-    // Supabase's safety check (Supabase rejects bare updates without a WHERE).
-    const { error: clearErr } = await supabase
-      .from("gallery_items")
-      .update({ is_featured: false })
-      .neq("id", -1);  // matches every row (no real id is -1)
+    let catId: number | null = null;
+    if (categorySlug) {
+      const { data: catRow } = await supabase
+        .from("gallery_categories")
+        .select("id")
+        .eq("slug", categorySlug)
+        .maybeSingle();
+      if (catRow?.id) catId = catRow.id;
+    }
 
-    if (clearErr) console.warn("Clear featured failed:", clearErr.message);
+    if (!catId) {
+      // Find category_id from the item itself
+      const { data: itemRow } = await supabase
+        .from("gallery_items")
+        .select("category_id")
+        .eq("id", id)
+        .maybeSingle();
+      if (itemRow?.category_id) catId = itemRow.category_id;
+    }
 
-    // Step 2 — Mark only the chosen image as featured.
-    // DO NOT touch published — requirement says other images must not be modified.
+    // Step 1 — Clear the is_featured flag for images in THIS CATEGORY ONLY
+    let clearQuery = supabase.from("gallery_items").update({ is_featured: false });
+    if (catId) {
+      clearQuery = clearQuery.eq("category_id", catId);
+    } else {
+      clearQuery = clearQuery.neq("id", -1);
+    }
+    const { error: clearErr } = await clearQuery;
+    if (clearErr) console.warn("Clear category featured failed:", clearErr.message);
+
+    // Step 2 — Mark the chosen image as featured for this category
     const { error: setErr } = await supabase
       .from("gallery_items")
       .update({ is_featured: true })
@@ -539,7 +558,6 @@ export async function adminSetFeaturedGalleryItem(
     console.warn("adminSetFeaturedGalleryItem exception:", err);
   }
 
-  // Return ALL items so the caller can update its full list
   return adminFetchAllGalleryItems();
 }
 

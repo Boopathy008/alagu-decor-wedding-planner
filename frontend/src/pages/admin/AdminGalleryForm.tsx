@@ -117,8 +117,8 @@ export default function AdminGalleryForm() {
       const itemId = savedItem?.id ?? (isEditing && id ? Number(id) : null);
       if (itemId) {
         if (isFeatured) {
-          // Mark only this image as featured, clearing all others globally
-          await adminSetFeaturedGalleryItem(itemId);
+          // Mark this image as featured for this specific category
+          await adminSetFeaturedGalleryItem(itemId, categorySlug);
         } else {
           // If "Show in Gallery Only" is selected, explicitly unfeature in DB
           await supabase
@@ -294,9 +294,8 @@ export default function AdminGalleryForm() {
                   <span className="text-amber-600">★</span> Show on Homepage
                 </span>
                 <p className="text-xs text-charcoal/60 mt-1 leading-relaxed">
-                  This image will appear as the main cover on the homepage.
-                  Selecting this automatically clears any previous homepage selection.
-                  Only 1 image can be featured on the homepage globally.
+                  This image will appear as the cover for the <strong>{category?.name || categorySlug}</strong> section on the homepage.
+                  Selecting this automatically clears any previous homepage cover for this category.
                 </p>
               </div>
             </label>

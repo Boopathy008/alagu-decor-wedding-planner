@@ -188,15 +188,22 @@ function CategorySection({
   const activeSubName =
     subcategories.find((s) => s.slug === activeSubSlug)?.name || activeSubSlug;
 
-  // Items in this category and selected subcategory
+  // 1. Check if an image in this category was marked as "Show on Homepage" by admin
+  const categoryFeaturedItem = galleryItems.find(
+    (item) => item.categorySlug === category.slug && item.isFeatured
+  );
+
+  // 2. Fallback: items in active subcategory or general category items
   const subItems = galleryItems.filter(
     (item) =>
       item.categorySlug === category.slug &&
       item.subcategorySlug === activeSubSlug
   );
 
-  // Show the first available image for this subcategory (any published item)
-  const displayItem = subItems[0] || galleryItems.find((i) => i.categorySlug === category.slug);
+  const displayItem =
+    categoryFeaturedItem ||
+    subItems[0] ||
+    galleryItems.find((i) => i.categorySlug === category.slug);
 
   const displayImage =
     displayItem?.imageUrl ||
