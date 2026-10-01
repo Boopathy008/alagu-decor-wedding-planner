@@ -502,9 +502,12 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
 // Only clears the PREVIOUS featured item (not all items) to avoid side-effects.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function adminSetFeaturedGalleryItem(id: number, categorySlug: string): Promise<GalleryItem[]> {
+export async function adminSetFeaturedGalleryItem(
+  id: number,
+  categorySlug: string,
+  subcategorySlug?: string
+): Promise<GalleryItem[]> {
   try {
-    // Resolve category_id to filter safely (avoids PostgREST joined-table filter bug)
     const { data: catRow } = await supabase
       .from("gallery_categories")
       .select("id")
@@ -512,13 +515,29 @@ export async function adminSetFeaturedGalleryItem(id: number, categorySlug: stri
       .maybeSingle();
 
     if (catRow?.id) {
-      // Only clear items in THIS CATEGORY that are currently marked as featured_cover.
-      // This avoids touching other items' cloudinary_public_id unnecessarily.
-      await supabase
-        .from("gallery_items")
-        .update({ cloudinary_public_id: "" })
-        .eq("category_id", catRow.id)
-        .eq("cloudinary_public_id", "featured_cover");
+      if (subcategorySlug) {
+        const { data: subRow } = await supabase
+          .from("gallery_subcategories")
+          .select("id")
+          .eq("category_id", catRow.id)
+          .eq("slug", subcategorySlug)
+          .maybeSingle();
+
+        if (subRow?.id) {
+          await supabase
+            .from("gallery_items")
+            .update({ cloudinary_public_id: "" })
+            .eq("category_id", catRow.id)
+            .eq("subcategory_id", subRow.id)
+            .eq("cloudinary_public_id", "featured_cover");
+        }
+      } else {
+        await supabase
+          .from("gallery_items")
+          .update({ cloudinary_public_id: "" })
+          .eq("category_id", catRow.id)
+          .eq("cloudinary_public_id", "featured_cover");
+      }
     }
 
     // Set the new featured item — ONLY updates cloudinary_public_id and ensures published is true.

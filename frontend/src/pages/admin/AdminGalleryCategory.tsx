@@ -31,11 +31,11 @@ export default function AdminGalleryCategory() {
       .finally(() => setLoading(false));
   }
 
-  async function handleSetFeatured(id: number) {
+  async function handleSetFeatured(id: number, subcategorySlug?: string) {
     if (!category) return;
     setSettingFeaturedId(id);
     try {
-      const updated = await adminSetFeaturedGalleryItem(id, category.slug);
+      const updated = await adminSetFeaturedGalleryItem(id, category.slug, subcategorySlug);
       setItems(updated);
     } finally {
       setSettingFeaturedId(null);
@@ -117,7 +117,7 @@ export default function AdminGalleryCategory() {
                       </div>
                       <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                         <button
-                          onClick={() => handleSetFeatured(item.id)}
+                          onClick={() => handleSetFeatured(item.id, item.subcategorySlug)}
                           disabled={settingFeaturedId === item.id}
                           className={`${
                             item.isFeatured ? "bg-amber-500" : "bg-accent"

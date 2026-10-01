@@ -1,20 +1,20 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
-import { serviceCategories } from "@/config/services";
+import { AnimatePresence, motion } from "framer-motion";
+import { serviceCategories, type ServiceCategory } from "@/config/services";
 import { site } from "@/config/site";
 import { FadeIn, Button } from "@/components/ui/Primitives";
 import { WhatsAppButton } from "@/components/layout/Chrome";
-import { fetchFeaturedGallery } from "@/services/api";
+import { fetchAllGalleryItems } from "@/services/api";
 import type { GalleryItem } from "@/types";
 
 export default function Home() {
-  const [featured, setFeatured] = useState<GalleryItem[]>([]);
+  const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
 
   useEffect(() => {
-    fetchFeaturedGallery()
-      .then(setFeatured)
-      .catch(() => setFeatured([]));
+    fetchAllGalleryItems()
+      .then(setGalleryItems)
+      .catch(() => setGalleryItems([]));
   }, []);
 
   return (
@@ -29,67 +29,143 @@ export default function Home() {
         </FadeIn>
       </section>
 
-      {/* Visual storytelling through actual categories */}
-      <section className="max-w-7xl mx-auto px-6 pb-28 space-y-24">
-        {serviceCategories.map((cat, i) => {
-          const items = featured.filter((f) => f.categorySlug === cat.slug).slice(0, 1);
-          const image = items[0]?.imageUrl || cat.defaultImageUrl;
-          const reverse = i % 2 === 1;
-          return (
-            <FadeIn key={cat.slug}>
-              <div
-                className={`grid grid-cols-1 md:grid-cols-2 gap-10 items-center ${
-                  reverse ? "md:[&>*:first-child]:order-2" : ""
-                }`}
-              >
-                <div className="aspect-[4/5] bg-charcoal/5 overflow-hidden group relative shadow-lg">
-                  {image ? (
-                    <>
-                      <img
-                        src={image}
-                        alt={cat.name}
-                        loading="lazy"
-                        className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-110"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-deep/80 via-deep/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex flex-col justify-end p-6 text-ivory">
-                        <span className="text-[10px] uppercase tracking-widest2 text-accent mb-1">
-                          {cat.name}
-                        </span>
-                        <h4 className="font-display text-xl transform translate-y-4 group-hover:translate-y-0 transition-transform duration-500">
-                          {cat.tagline}
-                        </h4>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-charcoal/30 text-sm">
-                      Gallery coming soon
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-widest2 text-accent mb-3">
-                    {String(i + 1).padStart(2, "0")} — {cat.name}
-                  </p>
-                  <h3 className="font-display text-3xl md:text-4xl font-light mb-4">
-                    {cat.tagline}
-                  </h3>
-                  <p className="text-charcoal/60 mb-6">{cat.intro}</p>
-                  <Link
-                    to={`/services/${cat.slug}`}
-                    className="text-xs uppercase tracking-widest2 border-b border-charcoal/30 pb-1 hover:border-accent hover:text-accent transition-colors"
-                  >
-                    Explore {cat.name}
-                  </Link>
-                </div>
-              </div>
-            </FadeIn>
-          );
-        })}
+      {/* Dynamic Visual Storytelling for all 7 categories */}
+      <section className="max-w-7xl mx-auto px-6 pb-28 space-y-28">
+        {serviceCategories.map((cat, i) => (
+          <CategoryInteractiveSection
+            key={cat.slug}
+            category={cat}
+            index={i}
+            galleryItems={galleryItems}
+          />
+        ))}
       </section>
 
       <CustomEventSection />
       <WhatsAppButton />
     </div>
+  );
+}
+
+function CategoryInteractiveSection({
+  category,
+  index,
+  galleryItems,
+}: {
+  category: ServiceCategory;
+  index: number;
+  galleryItems: GalleryItem[];
+}) {
+  const subcategories = category.gallerySubcategories;
+  const [activeSubSlug, setActiveSubSlug] = useState<string>(
+    subcategories[0]?.slug || ""
+  );
+
+  const reverse = index % 2 === 1;
+
+  // Resolve cover image for selected subcategory
+  const activeSubName =
+    subcategories.find((s) => s.slug === activeSubSlug)?.name || activeSubSlug;
+
+  // 1. Items in this category & subcategory
+  const subItems = galleryItems.filter(
+    (item) => item.categorySlug === category.slug && item.subcategorySlug === activeSubSlug
+  );
+
+  // 2. Featured item in this subcategory (if admin selected one)
+  const featuredInSub = subItems.find((item) => item.isFeatured);
+
+  // 3. Fallback item in this subcategory or category
+  const activeItem = featuredInSub || subItems[0];
+
+  const displayImage =
+    activeItem?.imageUrl ||
+    category.defaultImageUrl ||
+    "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=1200";
+
+  const displayTitle = activeItem?.title || `${activeSubName} Showcase`;
+
+  return (
+    <FadeIn>
+      <div
+        className={`grid grid-cols-1 md:grid-cols-2 gap-10 items-center ${
+          reverse ? "md:[&>*:first-child]:order-2" : ""
+        }`}
+      >
+        {/* Dynamic Image Display with Framer Motion transition */}
+        <div className="aspect-[4/5] bg-charcoal/5 overflow-hidden group relative shadow-lg rounded-sm">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeSubSlug + (activeItem?.id || "default")}
+              initial={{ opacity: 0, scale: 1.05 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+              className="w-full h-full relative"
+            >
+              <img
+                src={displayImage}
+                alt={displayTitle}
+                loading="lazy"
+                className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-110"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-deep/90 via-deep/20 to-transparent flex flex-col justify-end p-6 text-ivory">
+                <span className="text-[10px] uppercase tracking-widest2 text-accent font-semibold mb-1">
+                  {category.name} — {activeSubName}
+                </span>
+                <h4 className="font-display text-xl font-light">{displayTitle}</h4>
+              </div>
+            </motion.div>
+          </AnimatePresence>
+        </div>
+
+        {/* Interactive Subcategory Pills & Info */}
+        <div className="flex flex-col justify-center">
+          <p className="text-xs uppercase tracking-widest2 text-accent mb-2 font-semibold">
+            {String(index + 1).padStart(2, "0")} — {category.name}
+          </p>
+          <h3 className="font-display text-3xl md:text-4xl font-light mb-4">
+            {category.tagline}
+          </h3>
+          <p className="text-charcoal/60 text-sm mb-6 leading-relaxed">{category.intro}</p>
+
+          {/* Interactive Subcategory Pills */}
+          <div className="mb-8">
+            <p className="text-[10px] uppercase tracking-widest2 text-charcoal/40 mb-3 font-semibold">
+              Select Subcategory to View:
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {subcategories.map((sub) => {
+                const isActive = activeSubSlug === sub.slug;
+                const hasCustomItem = galleryItems.some(
+                  (i) => i.categorySlug === category.slug && i.subcategorySlug === sub.slug
+                );
+                return (
+                  <button
+                    key={sub.slug}
+                    onClick={() => setActiveSubSlug(sub.slug)}
+                    className={`px-3 py-1.5 text-xs font-medium uppercase tracking-wider transition-all duration-300 border ${
+                      isActive
+                        ? "bg-charcoal text-ivory border-charcoal shadow-sm"
+                        : "bg-white text-charcoal/70 border-charcoal/20 hover:border-accent hover:text-accent"
+                    }`}
+                  >
+                    {sub.name} {hasCustomItem ? "✦" : ""}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <Link
+            to={`/services/${category.slug}`}
+            className="inline-flex items-center text-xs uppercase tracking-widest2 text-charcoal font-semibold border-b border-charcoal/30 pb-1 hover:border-accent hover:text-accent transition-colors self-start"
+          >
+            Explore All {category.name} Work →
+          </Link>
+        </div>
+      </div>
+    </FadeIn>
   );
 }
 

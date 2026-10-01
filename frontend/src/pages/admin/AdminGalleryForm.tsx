@@ -93,14 +93,14 @@ export default function AdminGalleryForm() {
 
       if (itemId) {
         if (isFeatured && !originalIsFeatured) {
-          // User just CHECKED the box → set as front page cover
-          await adminSetFeaturedGalleryItem(itemId, categorySlug);
+          // User just CHECKED the box → set as front page cover for this subcategory
+          await adminSetFeaturedGalleryItem(itemId, categorySlug, subcategorySlug);
         } else if (!isFeatured && originalIsFeatured) {
           // User just UNCHECKED the box → remove from front page cover
           await adminUnsetFeaturedGalleryItem(itemId, categorySlug);
         } else if (isFeatured && originalIsFeatured) {
           // Still featured — re-apply to make sure
-          await adminSetFeaturedGalleryItem(itemId, categorySlug);
+          await adminSetFeaturedGalleryItem(itemId, categorySlug, subcategorySlug);
         }
       }
 
