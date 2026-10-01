@@ -205,7 +205,7 @@ export default function AdminGalleryForm() {
               className="w-4 h-4"
             />
             <div>
-              <span className="text-sm font-medium">Published</span>
+              <span className="text-sm font-medium">Published (visible on the public site)</span>
               <p className="text-xs text-charcoal/40">
                 Show this image in Our Works gallery page
               </p>
@@ -213,38 +213,46 @@ export default function AdminGalleryForm() {
           </label>
         </div>
 
-        {/* ─── Show on Front Page ─────────────────────────────────────────── */}
+        {/* ─── Radio Button for Homepage Image Selection ───────────────────── */}
         <div
-          className={`border-2 rounded p-4 cursor-pointer transition-all duration-200 ${
+          className={`border-2 rounded-lg p-5 cursor-pointer transition-all duration-200 ${
             isFeatured
-              ? "border-amber-500 bg-amber-50 shadow-md shadow-amber-100"
+              ? "border-amber-500 bg-amber-50/80 shadow-md shadow-amber-100/50"
               : "border-charcoal/15 bg-white hover:border-amber-300"
           }`}
-          onClick={() => setIsFeatured((v) => !v)}
+          onClick={() => {
+            setIsFeatured(true);
+            setPublished(true);
+          }}
         >
-          <p className="text-xs uppercase tracking-widest2 text-charcoal/40 mb-3">Front Page</p>
-          <label className="flex items-center gap-2 cursor-pointer" onClick={(e) => e.stopPropagation()}>
+          <p className="text-[10px] font-bold uppercase tracking-widest2 text-amber-700/70 mb-2">
+            Homepage Display Option
+          </p>
+          <label className="flex items-start gap-3 cursor-pointer" onClick={(e) => e.stopPropagation()}>
             <input
-              id="isFeatured"
-              type="checkbox"
+              type="radio"
+              name="homepageSelectedImage"
               checked={isFeatured}
-              onChange={(e) => setIsFeatured(e.target.checked)}
-              className="w-4 h-4 accent-amber-500"
+              onChange={() => {
+                setIsFeatured(true);
+                setPublished(true);
+              }}
+              className="mt-0.5 w-5 h-5 text-amber-600 focus:ring-amber-500 accent-amber-600 cursor-pointer"
             />
             <div>
-              <span className={`text-sm font-semibold ${isFeatured ? "text-amber-700" : ""}`}>
-                ★ Show on Front Page (Home)
+              <span className={`text-base font-semibold ${isFeatured ? "text-amber-900" : "text-charcoal"}`}>
+                Show this image on the Homepage
               </span>
-              <p className="text-xs text-charcoal/40 mt-0.5">
+              <p className="text-xs text-charcoal/60 mt-1 leading-relaxed">
                 {isFeatured
-                  ? `This image will appear in the "${category?.name}" section on the home page.`
-                  : `Check this to use this image in the "${category?.name ?? categorySlug}" section on the home page. Other images will still be visible in Our Works.`}
+                  ? `🔘 Radio selected: This image is set to display on the homepage for "${category?.name}". Selecting a different image's radio button will automatically switch the homepage cover to that new image.`
+                  : `Select this radio button to display this image on the homepage for "${category?.name}". Unselected images remain available in Our Works.`}
               </p>
             </div>
           </label>
           {isFeatured && (
-            <p className="mt-2 text-[11px] text-amber-600 font-medium pl-6">
-              ℹ️ Only one image per category can be the home page cover. Setting this will remove the previous cover.
+            <p className="mt-2 text-[11px] text-amber-700 font-medium pl-8">
+              ℹ️ Selecting this radio button unselects any previous homepage cover for this category.
             </p>
           )}
         </div>

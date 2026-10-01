@@ -106,14 +106,29 @@ export default function AdminGalleryCategory() {
                       </div>
                       <div className="p-3">
                         <p className="text-sm font-medium truncate">{item.title}</p>
-                        <div className="flex items-center justify-between text-xs text-charcoal/40 mt-1">
+                        <div className="flex items-center justify-between text-xs text-charcoal/40 mt-1 mb-2">
                           <span>{item.published ? "Published" : "Unpublished"}</span>
-                          {item.isFeatured && (
-                            <span className="text-amber-600 font-semibold text-[10px]">
-                              Front Page Cover
-                            </span>
-                          )}
                         </div>
+                        <label
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!item.isFeatured) handleSetFeatured(item.id, item.subcategorySlug);
+                          }}
+                          className={`flex items-center gap-1.5 px-2 py-1 rounded cursor-pointer text-[11px] font-medium border transition-colors ${
+                            item.isFeatured
+                              ? "bg-amber-500 text-white border-amber-600 font-semibold shadow-sm"
+                              : "bg-charcoal/5 text-charcoal/70 border-charcoal/15 hover:border-amber-400"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name={`cat_homepage_radio_${category.slug}`}
+                            checked={Boolean(item.isFeatured)}
+                            onChange={() => handleSetFeatured(item.id, item.subcategorySlug)}
+                            className="w-3.5 h-3.5 accent-amber-600 cursor-pointer"
+                          />
+                          <span>{item.isFeatured ? "Homepage Selected" : "Select for Homepage"}</span>
+                        </label>
                       </div>
                       <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                         <button
