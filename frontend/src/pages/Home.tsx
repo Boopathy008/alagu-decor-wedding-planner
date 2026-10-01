@@ -187,7 +187,7 @@ function CategorySection({
           />
           <div className="absolute inset-0 bg-gradient-to-t from-deep/90 via-deep/20 to-transparent flex flex-col justify-end p-6 text-ivory">
             <span className="text-[10px] uppercase tracking-widest2 text-accent font-semibold mb-1">
-              {category.name} — {activeSubName}
+              {category.name}
             </span>
             <h4 className="font-display text-xl font-light">{displayTitle}</h4>
           </div>
@@ -205,39 +205,9 @@ function CategorySection({
             {category.intro}
           </p>
 
-          {/* Subcategory pills */}
-          <div className="mb-8">
-            <p className="text-[10px] uppercase tracking-widest2 text-charcoal/40 mb-3 font-semibold">
-              Browse by Subcategory:
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {subcategories.map((sub) => {
-                const isActive = activeSubSlug === sub.slug;
-                const hasImages = galleryItems.some(
-                  (i) =>
-                    i.categorySlug === category.slug &&
-                    i.subcategorySlug === sub.slug
-                );
-                return (
-                  <button
-                    key={sub.slug}
-                    onClick={() => setActiveSubSlug(sub.slug)}
-                    className={`px-3 py-1.5 text-xs font-medium uppercase tracking-wider transition-all duration-300 border ${
-                      isActive
-                        ? "bg-charcoal text-ivory border-charcoal shadow-sm"
-                        : "bg-white text-charcoal/70 border-charcoal/20 hover:border-accent hover:text-accent"
-                    }`}
-                  >
-                    {sub.name} {hasImages ? "✦" : ""}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
           <Link
             to={`/services/${category.slug}`}
-            className="inline-flex items-center text-xs uppercase tracking-widest2 text-charcoal font-semibold border-b border-charcoal/30 pb-1 hover:border-accent hover:text-accent transition-colors self-start"
+            className="inline-flex items-center text-xs uppercase tracking-widest2 text-charcoal font-semibold border-b border-charcoal/30 pb-1 hover:border-accent hover:text-accent transition-colors self-start mt-2"
           >
             Explore All {category.name} Work →
           </Link>
