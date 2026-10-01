@@ -4,6 +4,7 @@ import { serviceCategories, getCategoryBySlug } from "@/config/services";
 import {
   adminCreateGalleryItem,
   adminFetchAllGalleryItems,
+  adminSetFeaturedGalleryItem,
   adminUpdateGalleryItem,
 } from "@/services/api";
 
@@ -18,6 +19,7 @@ export default function AdminGalleryForm() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [published, setPublished] = useState(true);
+  const [isFeatured, setIsFeatured] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -40,6 +42,7 @@ export default function AdminGalleryForm() {
         setTitle(item.title);
         setDescription(item.description);
         setPublished(item.published);
+        setIsFeatured(Boolean(item.isFeatured));
         setPreview(item.imageUrl);
       }
     });
@@ -77,11 +80,18 @@ export default function AdminGalleryForm() {
     if (file) formData.append("image", file);
 
     try {
+      let savedItem;
       if (isEditing && id) {
-        await adminUpdateGalleryItem(Number(id), formData);
+        savedItem = await adminUpdateGalleryItem(Number(id), formData);
       } else {
-        await adminCreateGalleryItem(formData);
+        savedItem = await adminCreateGalleryItem(formData);
       }
+
+      // If "Show on Front Page" is checked, set this image as the featured cover
+      if (isFeatured && savedItem?.id) {
+        await adminSetFeaturedGalleryItem(savedItem.id, categorySlug);
+      }
+
       setSuccessMessage(true);
       setTimeout(() => {
         navigate(`/admin/gallery/${categorySlug}`);
@@ -172,6 +182,7 @@ export default function AdminGalleryForm() {
           )}
         </label>
 
+        {/* Published checkbox */}
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
@@ -181,9 +192,38 @@ export default function AdminGalleryForm() {
           <span className="text-sm">Published (visible on the public site)</span>
         </label>
 
+        {/* Show on Front Page checkbox */}
+        <div
+          className={`flex items-start gap-3 border-2 rounded p-4 cursor-pointer transition-colors ${
+            isFeatured
+              ? "border-amber-500 bg-amber-50"
+              : "border-charcoal/15 bg-white hover:border-amber-300"
+          }`}
+          onClick={() => setIsFeatured((v) => !v)}
+        >
+          <input
+            id="isFeatured"
+            type="checkbox"
+            checked={isFeatured}
+            onChange={(e) => setIsFeatured(e.target.checked)}
+            onClick={(e) => e.stopPropagation()}
+            className="mt-0.5 w-4 h-4 accent-amber-500 cursor-pointer"
+          />
+          <div>
+            <label htmlFor="isFeatured" className="text-sm font-semibold cursor-pointer select-none">
+              ★ Show on Front Page
+            </label>
+            <p className="text-xs text-charcoal/50 mt-0.5">
+              This image will be shown in the home page section for{" "}
+              <strong>{category?.name ?? categorySlug}</strong>.
+              Only one image per category can be the front page cover.
+            </p>
+          </div>
+        </div>
+
         {saving && (
           <p className="text-sm text-amber-600 animate-pulse">
-            ⏳ Uploading image, please wait...
+            ⏳ {isFeatured ? "Saving & setting as front page cover..." : "Uploading image, please wait..."}
           </p>
         )}
 
@@ -195,7 +235,7 @@ export default function AdminGalleryForm() {
 
         {successMessage && (
           <p className="text-sm font-semibold text-emerald-600">
-            ✓ Upload successfully! Redirecting to gallery...
+            ✓ {isFeatured ? "Saved & set as front page cover!" : "Upload successfully!"} Redirecting...
           </p>
         )}
 
@@ -205,7 +245,7 @@ export default function AdminGalleryForm() {
             disabled={saving || successMessage}
             className="px-8 py-3 bg-charcoal text-ivory text-xs uppercase tracking-widest2 hover:bg-accent transition-colors disabled:opacity-50"
           >
-            {saving ? "Publishing..." : successMessage ? "Uploaded!" : isEditing ? "Save Changes" : "Publish"}
+            {saving ? "Saving..." : successMessage ? "Saved!" : isEditing ? "Save Changes" : "Publish"}
           </button>
         </div>
       </form>
