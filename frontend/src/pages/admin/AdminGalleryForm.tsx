@@ -4,6 +4,7 @@ import { serviceCategories, getCategoryBySlug } from "@/config/services";
 import {
   adminCreateGalleryItem,
   adminFetchAllGalleryItems,
+  adminSetFeaturedGalleryItem,
   adminUpdateGalleryItem,
 } from "@/services/api";
 
@@ -20,6 +21,8 @@ export default function AdminGalleryForm() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [published, setPublished] = useState(true);
+  // isFeatured: true = "Show on Homepage", false = "Gallery only"
+  const [isFeatured, setIsFeatured] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -38,7 +41,7 @@ export default function AdminGalleryForm() {
     }
   }, [categorySlug]);
 
-  // Load existing item when editing
+  // Load existing item when editing — reads isFeatured from DB
   useEffect(() => {
     if (!isEditing || !id) return;
     adminFetchAllGalleryItems().then((items) => {
@@ -49,6 +52,7 @@ export default function AdminGalleryForm() {
         setTitle(item.title);
         setDescription(item.description);
         setPublished(item.published);
+        setIsFeatured(Boolean(item.isFeatured));
         setPreview(item.imageUrl);
       }
     });
@@ -83,10 +87,18 @@ export default function AdminGalleryForm() {
     if (file) formData.append("image", file);
 
     try {
+      let savedItem;
       if (isEditing && id) {
-        await adminUpdateGalleryItem(Number(id), formData);
+        savedItem = await adminUpdateGalleryItem(Number(id), formData);
       } else {
-        await adminCreateGalleryItem(formData);
+        savedItem = await adminCreateGalleryItem(formData);
+      }
+
+      // If "Show on Homepage" is selected, save it to DB immediately
+      // This clears all other featured items globally and marks only this one
+      const itemId = savedItem?.id ?? (isEditing && id ? Number(id) : null);
+      if (itemId && isFeatured) {
+        await adminSetFeaturedGalleryItem(itemId);
       }
 
       setSuccessMessage(true);
@@ -212,20 +224,83 @@ export default function AdminGalleryForm() {
           </label>
         </div>
 
-        {/* Homepage note */}
-        <div className="border border-amber-200 bg-amber-50 p-4 rounded text-sm text-charcoal/70">
-          <p className="font-semibold text-charcoal mb-1">🏠 Homepage Image Selection</p>
-          <p>
-            To set an image as the homepage cover, go to the category gallery
-            page and click <strong>"Show on Homepage"</strong> on the image
-            directly. Only one image across all categories can be the homepage
-            image at a time.
+        {/* ── Homepage Display Radio ─────────────────────────────────────────── */}
+        <div className="border border-charcoal/20 bg-white p-5 rounded-lg">
+          <p className="text-xs font-bold uppercase tracking-widest2 text-charcoal/60 mb-4">
+            🏠 Homepage Display
           </p>
+
+          <div className="space-y-3">
+            {/* Radio 1 — Show on Homepage */}
+            <label
+              className={`flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-all ${
+                isFeatured
+                  ? "border-amber-500 bg-amber-50 shadow-sm"
+                  : "border-charcoal/15 bg-white hover:border-amber-300 hover:bg-amber-50/40"
+              }`}
+            >
+              <input
+                type="radio"
+                name="homepageOption"
+                value="featured"
+                checked={isFeatured}
+                onChange={() => {
+                  setIsFeatured(true);
+                  setPublished(true); // must be published to appear on homepage
+                }}
+                className="mt-0.5 w-4 h-4 accent-amber-600 cursor-pointer"
+              />
+              <div>
+                <span className="text-sm font-semibold text-charcoal block">
+                  ★ Show on Homepage
+                </span>
+                <p className="text-xs text-charcoal/55 mt-0.5 leading-relaxed">
+                  This image will appear as the main cover on the homepage.
+                  Selecting this automatically removes the previous homepage image.
+                  Only ONE image can be on the homepage at a time.
+                </p>
+              </div>
+            </label>
+
+            {/* Radio 2 — Gallery only */}
+            <label
+              className={`flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-all ${
+                !isFeatured
+                  ? "border-charcoal/40 bg-charcoal/5"
+                  : "border-charcoal/15 bg-white hover:border-charcoal/30"
+              }`}
+            >
+              <input
+                type="radio"
+                name="homepageOption"
+                value="gallery"
+                checked={!isFeatured}
+                onChange={() => setIsFeatured(false)}
+                className="mt-0.5 w-4 h-4 accent-charcoal cursor-pointer"
+              />
+              <div>
+                <span className="text-sm font-semibold text-charcoal block">
+                  Show in Gallery Only
+                </span>
+                <p className="text-xs text-charcoal/55 mt-0.5 leading-relaxed">
+                  This image will be visible in Our Works and category gallery
+                  pages, but will NOT be shown on the homepage.
+                </p>
+              </div>
+            </label>
+          </div>
+
+          {isFeatured && (
+            <p className="mt-3 text-[11px] text-amber-700 bg-amber-100 border border-amber-200 rounded px-3 py-2">
+              ⚠ Saving will set this as the homepage image and automatically
+              unselect any previously selected homepage image.
+            </p>
+          )}
         </div>
 
         {saving && (
           <p className="text-sm text-amber-600 animate-pulse">
-            ⏳ Saving changes, please wait...
+            ⏳ {isFeatured ? "Saving & updating homepage cover..." : "Saving changes, please wait..."}
           </p>
         )}
 
@@ -235,7 +310,7 @@ export default function AdminGalleryForm() {
 
         {successMessage && (
           <p className="text-sm font-semibold text-emerald-600">
-            ✓ Saved successfully! Redirecting...
+            ✓ {isFeatured ? "Saved & set as homepage image!" : "Saved successfully!"} Redirecting...
           </p>
         )}
 
@@ -245,7 +320,13 @@ export default function AdminGalleryForm() {
             disabled={saving || successMessage}
             className="px-8 py-3 bg-charcoal text-ivory text-xs uppercase tracking-widest2 hover:bg-accent transition-colors disabled:opacity-50"
           >
-            {saving ? "Saving..." : successMessage ? "Saved!" : isEditing ? "Save Changes" : "Publish"}
+            {saving
+              ? "Saving..."
+              : successMessage
+              ? "Saved!"
+              : isEditing
+              ? "Save Changes"
+              : "Publish"}
           </button>
         </div>
       </form>
