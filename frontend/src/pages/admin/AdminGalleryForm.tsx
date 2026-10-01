@@ -213,48 +213,68 @@ export default function AdminGalleryForm() {
           </label>
         </div>
 
-        {/* ─── Radio Button for Homepage Image Selection ───────────────────── */}
-        <div
-          className={`border-2 rounded-lg p-5 cursor-pointer transition-all duration-200 ${
-            isFeatured
-              ? "border-amber-500 bg-amber-50/80 shadow-md shadow-amber-100/50"
-              : "border-charcoal/15 bg-white hover:border-amber-300"
-          }`}
-          onClick={() => {
-            setIsFeatured(true);
-            setPublished(true);
-          }}
-        >
-          <p className="text-[10px] font-bold uppercase tracking-widest2 text-amber-700/70 mb-2">
+        {/* ─── Homepage Display Radio Group ──────────────────────────────── */}
+        <div className="border border-charcoal/20 bg-white p-5 rounded-lg space-y-4">
+          <p className="text-xs font-bold uppercase tracking-widest2 text-charcoal/60">
             Homepage Display Option
           </p>
-          <label className="flex items-start gap-3 cursor-pointer" onClick={(e) => e.stopPropagation()}>
-            <input
-              type="radio"
-              name="homepageSelectedImage"
-              checked={isFeatured}
-              onChange={() => {
-                setIsFeatured(true);
-                setPublished(true);
-              }}
-              className="mt-0.5 w-5 h-5 text-amber-600 focus:ring-amber-500 accent-amber-600 cursor-pointer"
-            />
-            <div>
-              <span className={`text-base font-semibold ${isFeatured ? "text-amber-900" : "text-charcoal"}`}>
-                Show this image on the Homepage
-              </span>
-              <p className="text-xs text-charcoal/60 mt-1 leading-relaxed">
-                {isFeatured
-                  ? `🔘 Radio selected: This image is set to display on the homepage for "${category?.name}". Selecting a different image's radio button will automatically switch the homepage cover to that new image.`
-                  : `Select this radio button to display this image on the homepage for "${category?.name}". Unselected images remain available in Our Works.`}
-              </p>
-            </div>
-          </label>
-          {isFeatured && (
-            <p className="mt-2 text-[11px] text-amber-700 font-medium pl-8">
-              ℹ️ Selecting this radio button unselects any previous homepage cover for this category.
-            </p>
-          )}
+
+          <div className="space-y-3">
+            {/* Radio 1: Show on Homepage */}
+            <label
+              className={`flex items-start gap-3 p-3.5 rounded-md border cursor-pointer transition-all ${
+                isFeatured
+                  ? "border-amber-500 bg-amber-50/90 shadow-sm"
+                  : "border-charcoal/15 bg-white hover:border-amber-300"
+              }`}
+            >
+              <input
+                type="radio"
+                name="homepageOption"
+                value="featured"
+                checked={isFeatured === true}
+                onChange={() => {
+                  setIsFeatured(true);
+                  setPublished(true);
+                }}
+                className="mt-0.5 w-4 h-4 text-amber-600 focus:ring-amber-500 accent-amber-600 cursor-pointer"
+              />
+              <div>
+                <span className="text-sm font-semibold text-charcoal block">
+                  Show on Homepage (Featured Cover Image)
+                </span>
+                <p className="text-xs text-charcoal/60 mt-0.5">
+                  Select this radio button to display this image on the homepage for "{category?.name}". Selecting this automatically unselects any previously selected homepage image.
+                </p>
+              </div>
+            </label>
+
+            {/* Radio 2: Show in Gallery Only */}
+            <label
+              className={`flex items-start gap-3 p-3.5 rounded-md border cursor-pointer transition-all ${
+                !isFeatured
+                  ? "border-charcoal/40 bg-charcoal/5"
+                  : "border-charcoal/15 bg-white hover:border-charcoal/30"
+              }`}
+            >
+              <input
+                type="radio"
+                name="homepageOption"
+                value="standard"
+                checked={isFeatured === false}
+                onChange={() => setIsFeatured(false)}
+                className="mt-0.5 w-4 h-4 text-charcoal focus:ring-charcoal accent-charcoal cursor-pointer"
+              />
+              <div>
+                <span className="text-sm font-semibold text-charcoal block">
+                  Show in Gallery Only (Do not show on Homepage)
+                </span>
+                <p className="text-xs text-charcoal/60 mt-0.5">
+                  This image will be visible in "Our Works" and category gallery pages, but will not be the featured image on the homepage.
+                </p>
+              </div>
+            </label>
+          </div>
         </div>
 
         {saving && (
