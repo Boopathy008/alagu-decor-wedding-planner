@@ -5,20 +5,13 @@ import { serviceCategories, type ServiceCategory } from "@/config/services";
 import { site } from "@/config/site";
 import { FadeIn, Button } from "@/components/ui/Primitives";
 import { WhatsAppButton } from "@/components/layout/Chrome";
-import { fetchHomepageImage, fetchAllGalleryItems } from "@/services/api";
+import { fetchAllGalleryItems } from "@/services/api";
 import type { GalleryItem } from "@/types";
 
 export default function Home() {
-  const [homepageImage, setHomepageImage] = useState<GalleryItem | null>(null);
-  const [heroLoading, setHeroLoading] = useState(true);
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
 
   useEffect(() => {
-    // Load the ONE globally-selected homepage image from DB
-    fetchHomepageImage()
-      .then(setHomepageImage)
-      .finally(() => setHeroLoading(false));
-
     // Load all published gallery items for the category sections
     fetchAllGalleryItems()
       .then(setGalleryItems)
@@ -27,8 +20,8 @@ export default function Home() {
 
   return (
     <div>
-      {/* ── Hero: Shows the ONE admin-selected homepage image ─────────────── */}
-      <HeroSection image={homepageImage} loading={heroLoading} />
+      {/* ── Hero: Sleek luxury black background ───────────────────────────── */}
+      <HeroSection />
 
       <section className="max-w-4xl mx-auto px-6 py-28 text-center">
         <FadeIn>
@@ -60,47 +53,22 @@ export default function Home() {
 
 // ─── Hero ─────────────────────────────────────────────────────────────────────
 
-function HeroSection({
-  image,
-  loading,
-}: {
-  image: GalleryItem | null;
-  loading: boolean;
-}) {
+function HeroSection() {
   return (
-    <section className="relative h-screen min-h-[640px] flex flex-col items-center justify-center bg-deep text-ivory overflow-hidden">
-      {/* Background: the admin-selected homepage image */}
-      {!loading && image && (
-        <motion.div
-          key={image.id}
-          initial={{ scale: 1.08, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 1.8, ease: [0.16, 1, 0.3, 1] }}
-          className="absolute inset-0"
-        >
-          <img
-            src={image.imageUrl}
-            alt={image.title}
-            className="w-full h-full object-cover"
-          />
-        </motion.div>
-      )}
+    <section className="relative h-screen min-h-[640px] flex flex-col items-center justify-center bg-black text-ivory overflow-hidden">
+      {/* Ambient dark radial glow */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-neutral-900/80 via-black to-black" />
 
-      {/* Dark gradient overlay — always present */}
-      <motion.div
-        initial={{ opacity: 0.6 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 2 }}
-        className="absolute inset-0 bg-gradient-to-b from-deep/50 via-deep/60 to-deep"
-      />
+      {/* Decorative subtle border line */}
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-500/20 to-transparent" />
 
       {/* Text content */}
-      <div className="relative z-10 text-center px-6">
+      <div className="relative z-10 text-center px-6 max-w-4xl">
         <motion.p
           initial={{ opacity: 0, letterSpacing: "0.1em" }}
           animate={{ opacity: 1, letterSpacing: "0.35em" }}
           transition={{ duration: 1.4, ease: [0.16, 1, 0.3, 1] }}
-          className="text-xs uppercase tracking-widest2 text-accent mb-6"
+          className="text-xs uppercase tracking-widest2 text-accent mb-6 font-semibold"
         >
           Wedding &amp; Event Studio
         </motion.p>
@@ -109,11 +77,13 @@ function HeroSection({
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1.2, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
-          className="font-display text-6xl md:text-9xl leading-[0.95] font-light"
+          className="font-display text-6xl md:text-9xl leading-[0.95] font-light tracking-wide"
         >
           {site.brandLine1}
           <br />
-          <span className="text-3xl md:text-5xl text-ivory/60">{site.brandLine2}</span>
+          <span className="text-3xl md:text-5xl text-ivory/60 font-serif italic mt-2 block">
+            {site.brandLine2}
+          </span>
         </motion.h1>
 
         <motion.p
@@ -124,18 +94,6 @@ function HeroSection({
         >
           "{site.message}"
         </motion.p>
-
-        {/* If an image is selected, show its caption */}
-        {!loading && image && (
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 1.3, duration: 0.8 }}
-            className="mt-4 text-[11px] uppercase tracking-widest2 text-ivory/40"
-          >
-            {image.categorySlug} — {image.subcategoryName || image.subcategorySlug}
-          </motion.p>
-        )}
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -167,7 +125,7 @@ function HeroSection({
   );
 }
 
-// ─── Category section (existing interactive subcategory pills) ────────────────
+// ─── Category Section ─────────────────────────────────────────────────────────
 
 function CategorySection({
   category,
