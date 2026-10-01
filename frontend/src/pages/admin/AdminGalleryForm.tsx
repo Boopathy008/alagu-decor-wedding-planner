@@ -1,9 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { serviceCategories, getCategoryBySlug } from "@/config/services";
+import { supabase } from "@/services/supabaseClient";
 import {
   adminCreateGalleryItem,
-  adminFetchAllGalleryItems,
   adminSetFeaturedGalleryItem,
   adminUpdateGalleryItem,
 } from "@/services/api";
@@ -21,11 +21,12 @@ export default function AdminGalleryForm() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [published, setPublished] = useState(true);
-  // isFeatured: true = "Show on Homepage", false = "Gallery only"
+  // isFeatured: true = "Show on Homepage", false = "Show in Gallery Only"
   const [isFeatured, setIsFeatured] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(isEditing);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState(false);
 
@@ -41,22 +42,41 @@ export default function AdminGalleryForm() {
     }
   }, [categorySlug]);
 
-  // Load existing item when editing — reads isFeatured from DB
+  // Load existing item directly from DB when editing — ensures exact isFeatured state
   useEffect(() => {
     if (!isEditing || !id) return;
-    adminFetchAllGalleryItems().then((items) => {
-      const item = items.find((i) => i.id === Number(id));
-      if (item) {
-        setCategorySlug(item.categorySlug);
-        setSubcategorySlug(item.subcategorySlug);
-        setTitle(item.title);
-        setDescription(item.description);
-        setPublished(item.published);
-        setIsFeatured(Boolean(item.isFeatured));
-        setPreview(item.imageUrl);
+    setLoading(true);
+
+    async function loadItem() {
+      try {
+        const { data, error: dbErr } = await supabase
+          .from("gallery_items")
+          .select("*, gallery_categories(slug), gallery_subcategories(slug)")
+          .eq("id", Number(id))
+          .maybeSingle();
+
+        if (!dbErr && data) {
+          if (data.gallery_categories?.slug) {
+            setCategorySlug(data.gallery_categories.slug);
+          }
+          if (data.gallery_subcategories?.slug) {
+            setSubcategorySlug(data.gallery_subcategories.slug);
+          }
+          setTitle(data.title || "");
+          setDescription(data.description || "");
+          setPublished(Boolean(data.published));
+          setIsFeatured(Boolean(data.is_featured));
+          setPreview(data.image_url);
+        }
+      } catch (e) {
+        console.error("Failed to load item:", e);
+      } finally {
+        setLoading(false);
       }
-    });
-  }, [id]);
+    }
+
+    loadItem();
+  }, [id, isEditing]);
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] || null;
@@ -94,11 +114,18 @@ export default function AdminGalleryForm() {
         savedItem = await adminCreateGalleryItem(formData);
       }
 
-      // If "Show on Homepage" is selected, save it to DB immediately
-      // This clears all other featured items globally and marks only this one
       const itemId = savedItem?.id ?? (isEditing && id ? Number(id) : null);
-      if (itemId && isFeatured) {
-        await adminSetFeaturedGalleryItem(itemId);
+      if (itemId) {
+        if (isFeatured) {
+          // Mark only this image as featured, clearing all others globally
+          await adminSetFeaturedGalleryItem(itemId);
+        } else {
+          // If "Show in Gallery Only" is selected, explicitly unfeature in DB
+          await supabase
+            .from("gallery_items")
+            .update({ is_featured: false })
+            .eq("id", itemId);
+        }
       }
 
       setSuccessMessage(true);
@@ -112,6 +139,14 @@ export default function AdminGalleryForm() {
     }
   }
 
+  if (loading) {
+    return (
+      <div className="max-w-xl py-12 text-center text-charcoal/60">
+        <p className="animate-pulse">Loading gallery item details...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-xl">
       <h1 className="font-display text-3xl mb-8">
@@ -119,7 +154,7 @@ export default function AdminGalleryForm() {
       </h1>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Category */}
+        {/* Main Category */}
         <label className="block">
           <span className="text-xs uppercase tracking-widest2 text-charcoal/50">
             Main Category
@@ -217,26 +252,30 @@ export default function AdminGalleryForm() {
                 Published (visible on the public site)
               </span>
               <p className="text-xs text-charcoal/40 mt-0.5">
-                When checked, this image appears in Our Works gallery and all 7
-                category pages. Uncheck to hide from the public site.
+                When checked, this image appears in Our Works gallery and category pages.
               </p>
             </div>
           </label>
         </div>
 
-        {/* ── Homepage Display Radio ─────────────────────────────────────────── */}
-        <div className="border border-charcoal/20 bg-white p-5 rounded-lg">
-          <p className="text-xs font-bold uppercase tracking-widest2 text-charcoal/60 mb-4">
-            🏠 Homepage Display
-          </p>
+        {/* ── Homepage Display Options (Radio Buttons) ─────────────────────────── */}
+        <div className="border border-charcoal/20 bg-white p-5 rounded-lg space-y-4">
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-widest2 text-charcoal/70">
+              Homepage Display Options
+            </h3>
+            <p className="text-xs text-charcoal/50 mt-1">
+              Select whether this image should serve as the single featured image on the main homepage.
+            </p>
+          </div>
 
           <div className="space-y-3">
-            {/* Radio 1 — Show on Homepage */}
+            {/* Radio Option 1: Show on Homepage */}
             <label
               className={`flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-all ${
                 isFeatured
-                  ? "border-amber-500 bg-amber-50 shadow-sm"
-                  : "border-charcoal/15 bg-white hover:border-amber-300 hover:bg-amber-50/40"
+                  ? "border-amber-500 bg-amber-50/80 shadow-sm"
+                  : "border-charcoal/15 bg-white hover:border-amber-300 hover:bg-amber-50/30"
               }`}
             >
               <input
@@ -246,23 +285,23 @@ export default function AdminGalleryForm() {
                 checked={isFeatured}
                 onChange={() => {
                   setIsFeatured(true);
-                  setPublished(true); // must be published to appear on homepage
+                  setPublished(true); // Must be published to be featured
                 }}
                 className="mt-0.5 w-4 h-4 accent-amber-600 cursor-pointer"
               />
               <div>
-                <span className="text-sm font-semibold text-charcoal block">
-                  ★ Show on Homepage
+                <span className="text-sm font-semibold text-charcoal flex items-center gap-1.5">
+                  <span className="text-amber-600">★</span> Show on Homepage
                 </span>
-                <p className="text-xs text-charcoal/55 mt-0.5 leading-relaxed">
+                <p className="text-xs text-charcoal/60 mt-1 leading-relaxed">
                   This image will appear as the main cover on the homepage.
-                  Selecting this automatically removes the previous homepage image.
-                  Only ONE image can be on the homepage at a time.
+                  Selecting this automatically clears any previous homepage selection.
+                  Only 1 image can be featured on the homepage globally.
                 </p>
               </div>
             </label>
 
-            {/* Radio 2 — Gallery only */}
+            {/* Radio Option 2: Show in Gallery Only */}
             <label
               className={`flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-all ${
                 !isFeatured
@@ -279,46 +318,47 @@ export default function AdminGalleryForm() {
                 className="mt-0.5 w-4 h-4 accent-charcoal cursor-pointer"
               />
               <div>
-                <span className="text-sm font-semibold text-charcoal block">
+                <span className="text-sm font-semibold text-charcoal">
                   Show in Gallery Only
                 </span>
-                <p className="text-xs text-charcoal/55 mt-0.5 leading-relaxed">
-                  This image will be visible in Our Works and category gallery
-                  pages, but will NOT be shown on the homepage.
+                <p className="text-xs text-charcoal/60 mt-1 leading-relaxed">
+                  This image will be visible in Our Works and category gallery pages,
+                  but will NOT be displayed on the main homepage cover.
                 </p>
               </div>
             </label>
           </div>
 
           {isFeatured && (
-            <p className="mt-3 text-[11px] text-amber-700 bg-amber-100 border border-amber-200 rounded px-3 py-2">
-              ⚠ Saving will set this as the homepage image and automatically
-              unselect any previously selected homepage image.
-            </p>
+            <div className="text-[11px] text-amber-800 bg-amber-100/90 border border-amber-200 rounded px-3 py-2">
+              ⚠ Saving will make this the main homepage image and remove the previous homepage selection.
+            </div>
           )}
         </div>
 
         {saving && (
-          <p className="text-sm text-amber-600 animate-pulse">
+          <p className="text-sm text-amber-600 animate-pulse font-medium">
             ⏳ {isFeatured ? "Saving & updating homepage cover..." : "Saving changes, please wait..."}
           </p>
         )}
 
         {error && (
-          <p className="text-sm font-semibold text-red-600">⚠ {error}</p>
-        )}
-
-        {successMessage && (
-          <p className="text-sm font-semibold text-emerald-600">
-            ✓ {isFeatured ? "Saved & set as homepage image!" : "Saved successfully!"} Redirecting...
+          <p className="text-sm font-semibold text-red-600 bg-red-50 p-3 rounded border border-red-200">
+            ⚠ {error}
           </p>
         )}
 
-        <div className="flex gap-3">
+        {successMessage && (
+          <p className="text-sm font-semibold text-emerald-700 bg-emerald-50 p-3 rounded border border-emerald-200">
+            ✓ {isFeatured ? "Saved & set as homepage cover!" : "Saved successfully!"} Redirecting...
+          </p>
+        )}
+
+        <div className="flex gap-3 pt-2">
           <button
             type="submit"
             disabled={saving || successMessage}
-            className="px-8 py-3 bg-charcoal text-ivory text-xs uppercase tracking-widest2 hover:bg-accent transition-colors disabled:opacity-50"
+            className="px-8 py-3 bg-charcoal text-ivory text-xs uppercase tracking-widest2 hover:bg-accent transition-colors disabled:opacity-50 font-medium"
           >
             {saving
               ? "Saving..."
