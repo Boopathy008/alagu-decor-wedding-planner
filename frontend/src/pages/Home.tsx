@@ -33,7 +33,7 @@ export default function Home() {
       <section className="max-w-7xl mx-auto px-6 pb-28 space-y-24">
         {serviceCategories.map((cat, i) => {
           const items = featured.filter((f) => f.categorySlug === cat.slug).slice(0, 1);
-          const image = items[0]?.imageUrl;
+          const image = items[0]?.imageUrl || cat.defaultImageUrl;
           const reverse = i % 2 === 1;
           return (
             <FadeIn key={cat.slug}>

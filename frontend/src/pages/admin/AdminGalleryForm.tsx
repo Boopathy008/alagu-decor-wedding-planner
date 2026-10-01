@@ -5,6 +5,7 @@ import {
   adminCreateGalleryItem,
   adminFetchAllGalleryItems,
   adminSetFeaturedGalleryItem,
+  adminUnsetFeaturedGalleryItem,
   adminUpdateGalleryItem,
 } from "@/services/api";
 
@@ -20,9 +21,12 @@ export default function AdminGalleryForm() {
   const [description, setDescription] = useState("");
   const [published, setPublished] = useState(true);
   const [isFeatured, setIsFeatured] = useState(false);
+  const [originalIsFeatured, setOriginalIsFeatured] = useState(false); // track what it was before editing
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState(false);
 
   const category = getCategoryBySlug(categorySlug);
 
@@ -43,6 +47,7 @@ export default function AdminGalleryForm() {
         setDescription(item.description);
         setPublished(item.published);
         setIsFeatured(Boolean(item.isFeatured));
+        setOriginalIsFeatured(Boolean(item.isFeatured));
         setPreview(item.imageUrl);
       }
     });
@@ -53,9 +58,6 @@ export default function AdminGalleryForm() {
     setFile(f);
     if (f) setPreview(URL.createObjectURL(f));
   }
-
-  const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -87,15 +89,25 @@ export default function AdminGalleryForm() {
         savedItem = await adminCreateGalleryItem(formData);
       }
 
-      // If "Show on Front Page" is checked, set this image as the featured cover
-      if (isFeatured && savedItem?.id) {
-        await adminSetFeaturedGalleryItem(savedItem.id, categorySlug);
+      const itemId = savedItem?.id ?? (isEditing && id ? Number(id) : null);
+
+      if (itemId) {
+        if (isFeatured && !originalIsFeatured) {
+          // User just CHECKED the box → set as front page cover
+          await adminSetFeaturedGalleryItem(itemId, categorySlug);
+        } else if (!isFeatured && originalIsFeatured) {
+          // User just UNCHECKED the box → remove from front page cover
+          await adminUnsetFeaturedGalleryItem(itemId, categorySlug);
+        } else if (isFeatured && originalIsFeatured) {
+          // Still featured — re-apply to make sure
+          await adminSetFeaturedGalleryItem(itemId, categorySlug);
+        }
       }
 
       setSuccessMessage(true);
       setTimeout(() => {
         navigate(`/admin/gallery/${categorySlug}`);
-      }, 1200);
+      }, 1400);
     } catch (err: any) {
       setError(err?.message || "Upload failed. Check file size/type and try again.");
     } finally {
@@ -182,60 +194,76 @@ export default function AdminGalleryForm() {
           )}
         </label>
 
-        {/* Published checkbox */}
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={published}
-            onChange={(e) => setPublished(e.target.checked)}
-          />
-          <span className="text-sm">Published (visible on the public site)</span>
-        </label>
+        {/* ─── Published ─────────────────────────────────────────────────── */}
+        <div className="border border-charcoal/15 bg-white p-4 rounded">
+          <p className="text-xs uppercase tracking-widest2 text-charcoal/40 mb-3">Visibility</p>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={published}
+              onChange={(e) => setPublished(e.target.checked)}
+              className="w-4 h-4"
+            />
+            <div>
+              <span className="text-sm font-medium">Published</span>
+              <p className="text-xs text-charcoal/40">
+                Show this image in Our Works gallery page
+              </p>
+            </div>
+          </label>
+        </div>
 
-        {/* Show on Front Page checkbox */}
+        {/* ─── Show on Front Page ─────────────────────────────────────────── */}
         <div
-          className={`flex items-start gap-3 border-2 rounded p-4 cursor-pointer transition-colors ${
+          className={`border-2 rounded p-4 cursor-pointer transition-all duration-200 ${
             isFeatured
-              ? "border-amber-500 bg-amber-50"
+              ? "border-amber-500 bg-amber-50 shadow-md shadow-amber-100"
               : "border-charcoal/15 bg-white hover:border-amber-300"
           }`}
           onClick={() => setIsFeatured((v) => !v)}
         >
-          <input
-            id="isFeatured"
-            type="checkbox"
-            checked={isFeatured}
-            onChange={(e) => setIsFeatured(e.target.checked)}
-            onClick={(e) => e.stopPropagation()}
-            className="mt-0.5 w-4 h-4 accent-amber-500 cursor-pointer"
-          />
-          <div>
-            <label htmlFor="isFeatured" className="text-sm font-semibold cursor-pointer select-none">
-              ★ Show on Front Page
-            </label>
-            <p className="text-xs text-charcoal/50 mt-0.5">
-              This image will be shown in the home page section for{" "}
-              <strong>{category?.name ?? categorySlug}</strong>.
-              Only one image per category can be the front page cover.
+          <p className="text-xs uppercase tracking-widest2 text-charcoal/40 mb-3">Front Page</p>
+          <label className="flex items-center gap-2 cursor-pointer" onClick={(e) => e.stopPropagation()}>
+            <input
+              id="isFeatured"
+              type="checkbox"
+              checked={isFeatured}
+              onChange={(e) => setIsFeatured(e.target.checked)}
+              className="w-4 h-4 accent-amber-500"
+            />
+            <div>
+              <span className={`text-sm font-semibold ${isFeatured ? "text-amber-700" : ""}`}>
+                ★ Show on Front Page (Home)
+              </span>
+              <p className="text-xs text-charcoal/40 mt-0.5">
+                {isFeatured
+                  ? `This image will appear in the "${category?.name}" section on the home page.`
+                  : `Check this to use this image in the "${category?.name ?? categorySlug}" section on the home page. Other images will still be visible in Our Works.`}
+              </p>
+            </div>
+          </label>
+          {isFeatured && (
+            <p className="mt-2 text-[11px] text-amber-600 font-medium pl-6">
+              ℹ️ Only one image per category can be the home page cover. Setting this will remove the previous cover.
             </p>
-          </div>
+          )}
         </div>
 
         {saving && (
           <p className="text-sm text-amber-600 animate-pulse">
-            ⏳ {isFeatured ? "Saving & setting as front page cover..." : "Uploading image, please wait..."}
+            ⏳ {isFeatured ? "Saving & updating front page cover..." : "Saving changes, please wait..."}
           </p>
         )}
 
         {error && (
           <p className="text-sm font-semibold text-red-600">
-            {error}
+            ⚠ {error}
           </p>
         )}
 
         {successMessage && (
           <p className="text-sm font-semibold text-emerald-600">
-            ✓ {isFeatured ? "Saved & set as front page cover!" : "Upload successfully!"} Redirecting...
+            ✓ {isFeatured ? "Saved & set as front page cover!" : "Saved successfully!"} Redirecting...
           </p>
         )}
 

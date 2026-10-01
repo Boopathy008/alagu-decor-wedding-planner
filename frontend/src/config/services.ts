@@ -23,6 +23,7 @@ export interface ServiceCategory {
   name: string;
   tagline: string;
   intro: string;
+  defaultImageUrl?: string;
   services: ServiceDefinition[];
   gallerySubcategories: SubcategoryDefinition[];
 }
@@ -34,6 +35,8 @@ export const serviceCategories: ServiceCategory[] = [
     tagline: "Spaces transformed into experiences.",
     intro:
       "From an intimate haldi to a thousand-guest reception, every decoration we build is designed around one idea: the space should feel like it was made only for you.",
+    defaultImageUrl:
+      "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=1200",
     services: [
       { name: "Wedding Decorations" },
       { name: "Engagement Decorations" },
@@ -61,6 +64,8 @@ export const serviceCategories: ServiceCategory[] = [
     tagline: "The technical craft behind every unforgettable moment.",
     intro:
       "Sound, light and screen — engineered so the technical layer of your event disappears and only the experience remains.",
+    defaultImageUrl:
+      "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&q=80&w=1200",
     services: [
       { name: "Audio Setup" },
       { name: "Professional Sound Systems" },
@@ -83,6 +88,8 @@ export const serviceCategories: ServiceCategory[] = [
     tagline: "Hospitality that guests remember as much as the ceremony.",
     intro:
       "Curated catering and live counters, built around your cuisine, your guest count and your venue.",
+    defaultImageUrl:
+      "https://images.unsplash.com/photo-1555244162-803834f70033?auto=format&fit=crop&q=80&w=1200",
     services: [
       { name: "Catering Services" },
       { name: "Food Stalls" },
@@ -103,6 +110,8 @@ export const serviceCategories: ServiceCategory[] = [
     tagline: "Moments your guests will talk about long after.",
     intro:
       "Interactive games and live performances designed to keep every generation of your guest list engaged.",
+    defaultImageUrl:
+      "https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?auto=format&fit=crop&q=80&w=1200",
     services: [
       { name: "Entertainment Games" },
       { name: "Couple Games" },
@@ -123,6 +132,8 @@ export const serviceCategories: ServiceCategory[] = [
     tagline: "A parting note, designed as carefully as the event itself.",
     intro:
       "Return gifts and favors that carry your event's theme home with every guest.",
+    defaultImageUrl:
+      "https://images.unsplash.com/photo-1513885535751-8b9238bd345a?auto=format&fit=crop&q=80&w=1200",
     services: [
       { name: "Return Gifts" },
       { name: "Customized Return Gifts" },
@@ -142,6 +153,8 @@ export const serviceCategories: ServiceCategory[] = [
     tagline: "The entrance that sets the tone for everything after it.",
     intro:
       "From a traditional band to a fully choreographed special entry, your entrance is where the story begins.",
+    defaultImageUrl:
+      "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&q=80&w=1200",
     services: [
       { name: "Band Music" },
       { name: "Live Band" },
@@ -165,6 +178,8 @@ export const serviceCategories: ServiceCategory[] = [
     tagline: "Every frame, a document of a moment that won't repeat.",
     intro:
       "Candid, traditional and cinematic coverage across your entire event calendar — engagement to reception.",
+    defaultImageUrl:
+      "https://images.unsplash.com/photo-1537633552985-df8429e8048b?auto=format&fit=crop&q=80&w=1200",
     services: [
       { name: "Wedding Photography" },
       { name: "Engagement Photography" },

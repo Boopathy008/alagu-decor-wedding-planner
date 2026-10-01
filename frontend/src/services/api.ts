@@ -186,6 +186,11 @@ async function supabaseCreateGalleryItem(
 // Public gallery reads
 // ─────────────────────────────────────────────────────────────────────────────
 
+export async function fetchAllGalleryItems(): Promise<GalleryItem[]> {
+  const all = await adminFetchAllGalleryItems();
+  return all.filter((item) => item.published);
+}
+
 export async function fetchGalleryByCategory(categorySlug: string): Promise<GalleryItem[]> {
   const all = await adminFetchAllGalleryItems(categorySlug);
   return all.filter((item) => item.published);
@@ -454,7 +459,16 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
       .from("gallery_items")
       .select("*, gallery_categories!inner(slug), gallery_subcategories!inner(slug, name)")
       .order("created_at", { ascending: false });
-    if (categorySlug) q = q.eq("gallery_categories.slug", categorySlug);
+
+    // Filter by category_id directly (more reliable than filtering through joined table in PostgREST)
+    if (categorySlug) {
+      const { data: catRow } = await supabase
+        .from("gallery_categories")
+        .select("id")
+        .eq("slug", categorySlug)
+        .maybeSingle();
+      if (catRow?.id) q = q.eq("category_id", catRow.id);
+    }
 
     const { data, error } = await q;
     if (!error && data) {
@@ -483,30 +497,51 @@ export async function adminFetchAllGalleryItems(categorySlug?: string): Promise<
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Admin gallery — SET FEATURED FRONT PAGE COVER
+//
+// SAFE: only touches cloudinary_public_id, never touches `published`.
+// Only clears the PREVIOUS featured item (not all items) to avoid side-effects.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function adminSetFeaturedGalleryItem(id: number, categorySlug: string): Promise<GalleryItem[]> {
   try {
-    // 1. Get all item IDs belonging to this category
-    const { data: categoryItems } = await supabase
-      .from("gallery_items")
-      .select("id, gallery_categories!inner(slug)")
-      .eq("gallery_categories.slug", categorySlug);
+    // Resolve category_id to filter safely (avoids PostgREST joined-table filter bug)
+    const { data: catRow } = await supabase
+      .from("gallery_categories")
+      .select("id")
+      .eq("slug", categorySlug)
+      .maybeSingle();
 
-    if (categoryItems && categoryItems.length > 0) {
-      const itemIds = categoryItems.map((d: any) => d.id);
-      // Unset featured_cover on all existing items in this category
+    if (catRow?.id) {
+      // Only clear items in THIS CATEGORY that are currently marked as featured_cover.
+      // This avoids touching other items' cloudinary_public_id unnecessarily.
       await supabase
         .from("gallery_items")
         .update({ cloudinary_public_id: "" })
-        .in("id", itemIds);
+        .eq("category_id", catRow.id)
+        .eq("cloudinary_public_id", "featured_cover");
     }
 
-    // 2. Set featured_cover on target item
+    // Set the new featured item — ONLY updates cloudinary_public_id and ensures published is true.
     await supabase
       .from("gallery_items")
-      .update({ cloudinary_public_id: "featured_cover" })
+      .update({ cloudinary_public_id: "featured_cover", published: true })
       .eq("id", id);
+  } catch (_) {}
+
+  return adminFetchAllGalleryItems(categorySlug);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin gallery — UNSET FEATURED (remove front-page cover for an item)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function adminUnsetFeaturedGalleryItem(id: number, categorySlug: string): Promise<GalleryItem[]> {
+  try {
+    await supabase
+      .from("gallery_items")
+      .update({ cloudinary_public_id: "" })
+      .eq("id", id)
+      .eq("cloudinary_public_id", "featured_cover"); // only clear if it IS the featured cover
   } catch (_) {}
 
   return adminFetchAllGalleryItems(categorySlug);

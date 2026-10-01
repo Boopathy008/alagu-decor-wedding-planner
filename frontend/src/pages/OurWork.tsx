@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { serviceCategories } from "@/config/services";
 import { SectionHeading, FadeIn } from "@/components/ui/Primitives";
 import { WhatsAppButton } from "@/components/layout/Chrome";
-import { fetchFeaturedGallery } from "@/services/api";
+import { fetchAllGalleryItems } from "@/services/api";
 import type { GalleryItem } from "@/types";
 
 export default function OurWork() {
@@ -11,7 +11,7 @@ export default function OurWork() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchFeaturedGallery()
+    fetchAllGalleryItems()
       .then(setItems)
       .catch(() => setItems([]))
       .finally(() => setLoading(false));
