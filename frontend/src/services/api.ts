@@ -287,14 +287,14 @@ export async function adminLogin(email: string, password: string) {
     // Other errors (network, 5xx) → fall through to demo mode below.
   }
 
-  // Demo / offline fallback — only when backend is unreachable.
+  // Admin credentials check — strictly allows only admin@azhagu.com & AzhaguDecor#Admin2026
   const e = email.trim().toLowerCase();
   const p = password.trim();
-  const demo =
-    (e === "admin@azhagu.com" || e === "admin") &&
-    (p === "AzhaguDecor#Admin2026" || p === "admin" || p === "admin123");
+  const isValidAdmin = e === "admin@azhagu.com" && p === "AzhaguDecor#Admin2026";
 
-  if (demo) return { token: "demo_admin_token_123", email: "admin@azhagu.com", role: "ADMIN" };
+  if (isValidAdmin) {
+    return { token: "demo_admin_token_123", email: "admin@azhagu.com", role: "ADMIN" };
+  }
 
   throw new Error("Invalid email or password.");
 }
